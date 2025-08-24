@@ -1,0 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-text font-sans antialiased;
+    background-image: 
+      linear-gradient(rgba(48, 54, 61, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(48, 54, 61, 0.5) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}

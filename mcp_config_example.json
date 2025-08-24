@@ -1,0 +1,33 @@
+{
+    "mcpServers": {
+        "jira": {
+            "command": "uvx",
+            "args": [
+              "mcp-atlassian",
+              "--jira-url",
+              "https://thdevelop.atlassian.net",
+              "--jira-token",
+              "YOUR_JIRA_TOKEN",
+              "--jira-username", "YOUR_JIRA_USER"
+            ]
+        },
+      "slack": {
+        "command": "npx",
+        "args": [
+          "-y",
+        "@modelcontextprotocol/server-slack"
+        ],
+        "env": {
+          "SLACK_BOT_TOKEN": "YOUR_TOKEN",
+          "SLACK_TEAM_ID": "YOUR_TEAM_ID",
+          "SLACK_CHANNEL_IDS": "SLACK_CHANNEL_IDS_SEPARATED_WITH_COMMA"
+        }
+      },
+      "gui-manager": {
+        "command": "python3",
+        "args": [
+          "meeting_agent/mcp_pyautogui.py"
+        ]
+      }
+    } 
+}

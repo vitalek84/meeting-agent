@@ -1,0 +1,118 @@
+services:
+  # Connection manager container
+  connection-manager:
+    build:
+      context: .
+      dockerfile: ./Dockerfiles/connection_manager/Dockerfile
+    container_name: connection-manager
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # This is critical: it allows the FastAPI container to control Docker on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app/src/
+    networks:
+      - default
+    profiles:
+      - production
+      - development
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.app-fapi.rule=Host(`${MANAGER_HOSTNAME}`) && PathPrefix(`/`)"
+      - "traefik.http.services.app-fapi.loadbalancer.server.port=8000"
+      - "traefik.http.routers.app-fapi.tls=true"
+      - "traefik.http.routers.app-fapi.tls.certresolver=le"
+      - "traefik.http.routers.app-fapi.entrypoints=https"
+
+
+  google-meet-dev:
+    build:
+      context: .
+      dockerfile: ./Dockerfiles/meeting_agent/Dockerfile
+    image: meeting-bog-dev
+    restart: unless-stopped
+    ports:
+      - 5900:5900
+    env_file:
+      - .env
+    environment:
+      MEET_USER_ID: 94243fe4-17dc-4025-b397-d0efd0c0e174 # Just test UUID
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # MEET_GM_LINK: some_google_meet_link # Should be provided for connection to already existed call
+      MEET_GOOGLE_EMAIL: ${MEET_GOOGLE_EMAIL}
+      MEET_GOOGLE_PASSWORD: ${MEET_GOOGLE_PASSWORD}
+      MEET_BROWSER_PROFILE_PATH: /app/src/browser_profiles/my_test_profile,
+      MEET_AGENT_ROLE: heart_of_gold_computer # maybe one of : software_development_manager, psychologist, heart_of_gold_computer, business_coach
+      "MEET_TECHNICAL_SCREENSHOTS": /app/src/technical_screenshots,
+      "MEET_MANAGER_HOST_NAME": connection-manager
+    volumes:
+      - .:/app/src/
+      - ./wireplumber/restore-stream:/root/.local/state/wireplumber/restore-stream
+    shm_size: "2gb"
+    networks:
+      - default
+    profiles:
+      - development
+
+  # Note: We define the worker here so its image gets built,
+  # but we don't run it. It will be launched on-demand by the connection-manager.
+  google-meet-worker:
+    build:
+      context: .
+      dockerfile: ./Dockerfiles/meeting_agent/Dockerfile
+    image: meeting-bot-v2
+    command: /usr/bin/echo "OK"
+    networks:
+      - default
+    profiles:
+      - production
+
+# Frontend service for development
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfiles/frontend/Dockerfile
+    container_name: frontend-dev
+    ports:
+      - "3000:3000" # Assuming your Node.js app runs on port 3000
+    volumes:
+      # Mount the frontend source code for hot-reloading
+      - ./frontend:/app/src
+      # Use an anonymous volume to keep node_modules from being overwritten by the host mount
+      - /app/src/node_modules
+    # Override the default command for development
+    command: npm run dev
+    environment:
+      # Should be changed by prod domain and if you have reverse proxy for proper proxy path
+      VITE_WEBSOCKET_HOST: ws://localhost:8000/ws
+    networks:
+      - default
+    profiles:
+      - development
+
+  # Frontend service for production
+  frontend-prod:
+    build:
+      context: .
+      dockerfile: Dockerfiles/frontend/Dockerfile
+    container_name: frontend-prod
+    ports:
+      - "3000:80" # Assuming your Node.js app runs on port 3000
+    # No source code volume is mounted in production
+    env_file:
+      - .env
+    networks:
+      - default
+    profiles:
+      - production
+
+volumes:
+ browser_profiles:
+    name: meeting_bot_browser_profiles_volume
+
+networks:
+  default:
+    name: meeting-bot_default
