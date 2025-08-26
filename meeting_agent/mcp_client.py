@@ -155,11 +155,33 @@ class GeminiMCPClient:
         Args:
             config_path: Path to the JSON configuration file.
         """
-        with open(config_path, "r") as config_file:
-            self.config = json.load(config_file)
+        # 1. Check if the file exists.
+        if not os.path.exists(config_path):
+            logging.error(f"Configuration file not found at path: {config_path}")
+            return
 
-        self.servers = [await self.launch_server(name, config) for name, config in self.config["mcpServers"].items()]
+        try:
+            with open(config_path, "r") as config_file:
+                # 2. Check if the file contains valid JSON.
+                self.config = json.load(config_file)
+        except json.JSONDecodeError:
+            logging.error(f"Error decoding JSON from the file: {config_path}")
+            return
+        except IOError as e:
+            logging.error(f"An error occurred while reading the file: {e}")
+            return
 
+        # 3. Check if the proper key is available in the JSON.
+        if "mcpServers" in self.config:
+            # 4. Launch the last line only if all checks pass.
+            self.servers = [
+                await self.launch_server(name, config)
+                for name, config in self.config["mcpServers"].items()
+            ]
+        else:
+            logging.warning(
+                f"The key 'mcpServers' was not found in {config_path}"
+            )
 
     async def launch_all(self) -> List[Any]:
 

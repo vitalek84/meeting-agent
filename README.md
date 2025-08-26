@@ -102,7 +102,7 @@ Management of Google meet calls happens via a mix of AI agent, Selenium driver, 
 
 # Known Issues and Limitations
 
-* The first launch is very slow up to 5 minutes. 
+* The first launch is very slow up to 5 minutes.
 * Sometimes even when an agent finishes correctly the system corrupts Chrome profile files. If it happens Chrome profile is deleted on the start up process of google meet worker and recreates again. So it again may take up to 5 minutes. In my tests it happens near 1 time in 20 launches. 
 * Sometimes an agent can’t finish a call. So all participants should leave a call and then in 2 minutes the agent will quit from this call because it is able to understand that it is alone in a call .
 
