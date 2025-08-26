@@ -3,6 +3,10 @@
 
 This is an Live AI-Agent that is able to connect or create google meet calls, manage them and play different roles in a call. 
 
+# Live example
+Live example is available here:
+[https://thebot.thdevelop.com/](https://thebot.thdevelop.com/)
+
 # Features 
 * An agent with voice interface in a google meeting call. 
 * MCP supports. Functionality of an agent may be easily extended by any MCP compatible tools. 

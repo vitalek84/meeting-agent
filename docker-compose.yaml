@@ -20,12 +20,13 @@ services:
       - production
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.app-fapi.rule=Host(`${MANAGER_HOSTNAME}`) && PathPrefix(`/`)"
+      - "traefik.docker.network=meeting-bot_default"
+      - "traefik.http.routers.app-fapi.rule=Host(`${MANAGER_HOSTNAME}`) && PathPrefix(`/ws`)"
       - "traefik.http.services.app-fapi.loadbalancer.server.port=8000"
       - "traefik.http.routers.app-fapi.tls=true"
       - "traefik.http.routers.app-fapi.tls.certresolver=le"
       - "traefik.http.routers.app-fapi.entrypoints=https"
+
 
 
   google-meet-dev:
@@ -103,14 +104,22 @@ services:
       dockerfile: Dockerfiles/frontend/Dockerfile
     container_name: frontend-prod
     ports:
-      - "3000:80" # Assuming your Node.js app runs on port 3000
-    # No source code volume is mounted in production
+      - "3000:80" # Just for local debugging if necessary
     env_file:
       - .env
     networks:
       - default
     profiles:
       - production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=meeting-bot_default"
+      - "traefik.http.routers.app-frontend.rule=Host(`${MANAGER_HOSTNAME}`) && PathPrefix(`/`)"
+      - "traefik.http.services.app-frontend.loadbalancer.server.port=80"
+      - "traefik.http.routers.app-frontend.tls=true"
+      - "traefik.http.routers.app-frontend.tls.certresolver=le"
+      - "traefik.http.routers.app-frontend.entrypoints=https"
+
 
 volumes:
  browser_profiles:
