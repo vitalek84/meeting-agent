@@ -243,7 +243,8 @@ class MeetingSubMachineInMeeting(MeetState):
                     if self.controller.cur_page.alone_in_the_call:
                         alone_in_the_call_timer+=1
                         # TODO Move to the settings
-                        if alone_in_the_call_timer >= 120:
+                        # TODO Implement like a "real timer". Current timeout like this_value X ~ while circle delay (aprox 8 seconds)
+                        if alone_in_the_call_timer >= 20:
                             finder = ControlFinder(self.controller.cur_page.elements)
                             await self.leave_call(finder)
                             self.logger.info("I am too long alone in this call! Quitting")
@@ -357,6 +358,8 @@ class StopState(MeetState):
 
 
 class GoogleLoginState(MeetState):
+    # TODO Check Retries logic!
+    # TODO ADD Capcha or additional number check logic.
     MAX_RETRIES = 4
 
     async def enter(self):

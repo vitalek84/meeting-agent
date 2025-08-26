@@ -61,8 +61,11 @@ class Settings(BaseSettings):
                     "proper shared volumes mounting"
     )
 
-
-
+    logs_root: Path = Field(
+        default=Path("/app/logs/meeting-worker-logs"),
+        description=("Logs of meeting worker containers"
+                     "This is path should be available/mounted on the host machine")
+    )
     browser_profile_volume: str = Field(
         default="meeting_bot_browser_profiles_volume",
         description="Volume name from docker compose. It should full name of the volume!"

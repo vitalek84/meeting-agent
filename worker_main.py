@@ -24,6 +24,7 @@ async def main():
     final_meet_link = None
     error_message = None
 
+    # For the login logic testing
     # shutil.rmtree(settings.browser_profile_path)
     try:
         driver = DriverConfigurator.make_driver(settings)

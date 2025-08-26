@@ -20,17 +20,17 @@ This is an Live AI-Agent that is able to connect or create google meet calls, ma
 * The system assumes that you use traefik as a reverse proxy for production so it should be installed and connected to the docker network meeting-bot_default
 
 ## Configuration (Production)
-For a first launch and to get acquainted with the system - production environment is recommended. It also may be launched w/o traefik on the localhost
+**For a first launch and to get acquainted with the system - production environment is recommended**. It also may be launched w/o traefik on the localhost
 
 * Create .env from .env_example
+* Create frontend/.env.local
 * Create mcp_config.json from mcp_config_example.json or put in mcp_config.json dummy json.
-* These environment variables should be configured:
+* These environment variables should be configured in the .env:
   * **MANAGER_GEMINI_API_KEY** - YOUR KEY - Aistudio key. Instruction how to create it may be found here: [AI Studio](https://aistudio.google.com/apikey)
-  * **MANAGER_GOOGLE_ACCOUNTS** - '[{"email":"your google account", "password": "your account password"}]' - these accounts are used when the management service creates a container for google meet. At least one should be specified. 
-  * **VITE_WEBSOCKET_HOST** - should container full url for websocket connection. Default ```ws://localhost:8000/ws```
+  * **MANAGER_GOOGLE_ACCOUNTS** - '[{"email":"your google account", "password": "your account password"}]' - these accounts are used when the management service creates a container for google meet. At least one should be specified.
   * **MANAGER_HOSTNAME** - hostname for management service default ```localhost```. 
-
-
+* This should be configured in the frontend/.env.local
+  * **VITE_WEBSOCKET_HOST** - should container full url for websocket connection. Default ```ws://localhost:8000/ws```
 ### Start
 
 ```docker compose --profile production up```

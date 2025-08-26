@@ -13,11 +13,11 @@ services:
       # This is critical: it allows the FastAPI container to control Docker on the host
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/app/src/
+      - ./logs:/app/logs
     networks:
       - default
     profiles:
       - production
-      - development
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
@@ -36,6 +36,7 @@ services:
     restart: unless-stopped
     ports:
       - 5900:5900
+    command: /bin/bash meeting_agent_entrypoint.sh
     env_file:
       - .env
     environment:
@@ -46,8 +47,8 @@ services:
       MEET_GOOGLE_PASSWORD: ${MEET_GOOGLE_PASSWORD}
       MEET_BROWSER_PROFILE_PATH: /app/src/browser_profiles/my_test_profile,
       MEET_AGENT_ROLE: heart_of_gold_computer # maybe one of : software_development_manager, psychologist, heart_of_gold_computer, business_coach
-      "MEET_TECHNICAL_SCREENSHOTS": /app/src/technical_screenshots,
-      "MEET_MANAGER_HOST_NAME": connection-manager
+      MEET_TECHNICAL_SCREENSHOTS: /app/src/technical_screenshots,
+      MEET_MANAGER_HOST_NAME: connection-manager
     volumes:
       - .:/app/src/
       - ./wireplumber/restore-stream:/root/.local/state/wireplumber/restore-stream
@@ -71,27 +72,27 @@ services:
       - production
 
 # Frontend service for development
-  frontend-dev:
-    build:
-      context: .
-      dockerfile: Dockerfiles/frontend/Dockerfile
-    container_name: frontend-dev
-    ports:
-      - "3000:3000" # Assuming your Node.js app runs on port 3000
-    volumes:
-      # Mount the frontend source code for hot-reloading
-      - ./frontend:/app/src
-      # Use an anonymous volume to keep node_modules from being overwritten by the host mount
-      - /app/src/node_modules
-    # Override the default command for development
-    command: npm run dev
-    environment:
-      # Should be changed by prod domain and if you have reverse proxy for proper proxy path
-      VITE_WEBSOCKET_HOST: ws://localhost:8000/ws
-    networks:
-      - default
-    profiles:
-      - development
+#  frontend-dev:
+#    build:
+#      context: .
+#      dockerfile: Dockerfiles/frontend/Dockerfile
+#    container_name: frontend-dev
+#    ports:
+#      - "3000:3000" # Assuming your Node.js app runs on port 3000
+#    volumes:
+#      # Mount the frontend source code for hot-reloading
+#      - ./frontend:/app/src
+#      # Use an anonymous volume to keep node_modules from being overwritten by the host mount
+#      - /app/src/node_modules
+#    # Override the default command for development
+#    command: npm run dev
+#    environment:
+#      # Should be changed by prod domain and if you have reverse proxy for proper proxy path
+#      VITE_WEBSOCKET_HOST: ws://localhost:8000/ws
+#    networks:
+#      - default
+#    profiles:
+#      - development
 
   # Frontend service for production
   frontend-prod:

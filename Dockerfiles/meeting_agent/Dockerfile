@@ -53,7 +53,7 @@ RUN chmod 444 /root/.local/state/wireplumber/restore-stream
 RUN pip install -r requirements.txt --break-system-packages
 # TODO COPY ALL DATA INTO CONTAINER!
 COPY ./meeting_agent /app/src/meeting_agent
-COPY ./worker_main.py /app/src/main.py
+COPY ./worker_main.py /app/src/worker_main.py
 COPY ./meeting_agent_entrypoint.sh /app/src/entrypoint.sh
 COPY ./mcp_config.json /app/src/mcp_config.json
 COPY ./gm_control_elems /app/src/gm_control_elems

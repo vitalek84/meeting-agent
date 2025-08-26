@@ -73,7 +73,7 @@ sleep 2
 
 xauth generate :0 . trusted
 
-python3 main.py
+python3 worker_main.py
 
 
 

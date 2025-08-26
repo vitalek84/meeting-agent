@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # --- Wait Times (in seconds) ---
     implicit_wait_seconds: int = Field(10, description="Implicit wait time for elements")
-    explicit_wait_seconds: int = Field(20, description="Explicit wait time for specific conditions")
+    explicit_wait_seconds: int = Field(120, description="Explicit wait time for specific conditions")
 
 
     browser_profile_path: str = "browser_profiles/chrome"

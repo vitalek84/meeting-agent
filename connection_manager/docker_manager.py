@@ -1,16 +1,19 @@
+import datetime
 import logging
 import os
 import threading
+from datetime import tzinfo
 from time import sleep
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import docker
 import requests
 from docker.errors import NotFound
 from docker.models.containers import Container
 
-from connection_manager.schemas import ContainerSettings, MeetingProgress, StatusEnum, LiveAgentRoles
-from connection_manager.settings import Settings, BASE_DIR
+# Assuming these are defined in your project
+from connection_manager.schemas import ContainerSettings, LiveAgentRoles
+from connection_manager.settings import Settings
 
 
 class DockerManager:
@@ -32,20 +35,62 @@ class DockerManager:
         self.active_containers_lock = threading.Lock()
         self.containers_settings: List[ContainerSettings] = []
         self.containers_settings_lock = threading.Lock()
+        self.occupied_ports: Set[int] = set()
+        self.occupied_ports_lock = threading.Lock()
+        self.port_range = range(5900, 6001)
+        # New logic
+        self.log_streaming_threads: Dict[str, threading.Thread] = {}
+        self.log_threads_lock = threading.Lock()
+        # End new logic
         self.settings = settings
         self.monitoring_active = True
         self.monitoring_thread = None
         print(settings.google_accounts)
         for account in settings.google_accounts:
-           self.containers_settings.append(
-               ContainerSettings(
-                   google_email=account.email,
-                   google_password=account.password,
-                   browser_profile_dir=settings.browser_profile_root / account.email.replace("@", "-").replace(".", "-"),
-                   is_launched=False
-               )
-           )
+            self.containers_settings.append(
+                ContainerSettings(
+                    google_email=account.email,
+                    google_password=account.password,
+                    browser_profile_dir=settings.browser_profile_root / account.email.replace("@", "-").replace(".",
+                                                                                                                "-"),
+                    is_launched=False
+                )
+            )
         self.start_monitoring()
+
+    def _find_available_port(self) -> Optional[int]:
+        """Finds an available port within the specified range."""
+        with self.occupied_ports_lock:
+            for port in self.port_range:
+                if port not in self.occupied_ports:
+                    self.occupied_ports.add(port)
+                    return port
+        return None
+
+    def _release_port(self, port: int):
+        """Releases a port, making it available for reuse."""
+        with self.occupied_ports_lock:
+            if port in self.occupied_ports:
+                self.occupied_ports.remove(port)
+
+    # New logic
+    def _stream_container_logs_to_file(self, container: Container, log_file_path: str):
+        """
+        Streams logs from a container and writes them to a file.
+        This method is intended to be run in a separate thread.
+        """
+        self.logger.info(f"Starting to stream logs for container {container.short_id} to {log_file_path}")
+        try:
+            with open(log_file_path, 'ab') as log_file: # Open in append binary mode
+                # The stream=True makes this a blocking call that yields new lines as they come in
+                for line in container.logs(stream=True, follow=True, stdout=True, stderr=True):
+                    log_file.write(line)
+                    log_file.flush()
+        except Exception as e:
+            self.logger.error(f"Log streaming for container {container.short_id} failed: {e}")
+        finally:
+            self.logger.info(f"Stopping log stream for container {container.short_id}.")
+    # End new logic
 
     def find_container_settings_by_email(self, email: str) -> Optional[ContainerSettings]:
         """Finds container settings by Google email."""
@@ -54,8 +99,6 @@ class DockerManager:
     def monitor_containers(self):
         """Monitors all active docker containers and cleans up if they are not running."""
         while self.monitoring_active:
-            # TODO Implement Timer!
-            # Create a copy of user_ids to avoid issues with modifying the dict while iterating
             user_ids = list(self.active_containers.keys())
             for user_id in user_ids:
                 container = self.active_containers.get(user_id)
@@ -65,46 +108,56 @@ class DockerManager:
                 try:
                     container.reload()
                     if container.status != 'running':
-
                         self.logger.warning(
                             f"Container for user {user_id} is not running (status: {container.status}). Cleaning up.")
                         self.cleanup_container_resources(container, user_id)
                 except NotFound:
                     self.logger.warning(
-                        f"Container for user {user_id} not found. It might have been removed manually. Cleaning up settings.")
-                    # If the container is not found, we still need to clean up the settings
-                    # We need a way to get the email to find the container settings
-                    # This part of the logic might need adjustment based on how you can retrieve the email
-                    # For now, we assume we can't find the settings if the container is gone, so we just remove it from active_containers
-                    with self.active_containers_lock:
-                        del self.active_containers[user_id]
+                        f"Container for user {user_id} not found. Cleaning up settings.")
+                    self.cleanup_container_resources(None, user_id) # Pass None for container
+            sleep(5)
 
-            sleep(5)  # Check every 10 seconds
-
-    def cleanup_container_resources(self, container: Container, user_id: str):
-        """Clears internal storage and resets the is_launched flag."""
+    def cleanup_container_resources(self, container: Optional[Container], user_id: str):
+        """Clears internal storage, resets flags, and stops associated threads."""
         try:
-            # Extract email from container's environment to find the correct settings
-            env_vars = container.attrs['Config']['Env']
-            email_var = next((var for var in env_vars if var.startswith("MEET_GOOGLE_EMAIL=")), None)
-            if email_var:
-                email = email_var.split("=")[1]
-                container_settings = self.find_container_settings_by_email(email)
+            # New logic
+            # The log streaming thread will stop automatically when the container stops.
+            # We just need to remove our reference to it.
+            with self.log_threads_lock:
+                if user_id in self.log_streaming_threads:
+                    del self.log_streaming_threads[user_id]
+                    self.logger.info(f"Removed log streaming thread reference for user {user_id}.")
+            # End new logic
 
-                if container_settings:
-                    with self.containers_settings_lock:
-                        container_settings.is_launched = False
-                    self.logger.info(f"Reset is_launched=False for {email}")
+            if container:
+                env_vars = container.attrs['Config']['Env']
+                email_var = next((var for var in env_vars if var.startswith("MEET_GOOGLE_EMAIL=")), None)
+                if email_var:
+                    email = email_var.split("=")[1]
+                    container_settings = self.find_container_settings_by_email(email)
+                    if container_settings:
+                        with self.containers_settings_lock:
+                            container_settings.is_launched = False
+                        self.logger.info(f"Reset is_launched=False for {email}")
 
-            try:
-                container.remove(force=True)
-            except NotFound:
-                pass # Already removed
+                try:
+                    container.reload()
+                    if container.ports:
+                        for container_port, host_ports in container.ports.items():
+                            if host_ports:
+                                for host_port in host_ports:
+                                    self._release_port(int(host_port['HostPort']))
+                except Exception as e:
+                    self.logger.error(f"Error releasing port for user {user_id}: {e}")
+
+                try:
+                    container.remove(force=True)
+                except NotFound:
+                    pass  # Already removed
 
         except Exception as e:
             self.logger.error(f"Error during cleanup for user {user_id}: {e}")
         finally:
-            # Remove from active containers list
             if user_id in self.active_containers:
                 with self.active_containers_lock:
                     del self.active_containers[user_id]
@@ -129,7 +182,7 @@ class DockerManager:
 
     def create_environment(
             self,
-            container_settings:ContainerSettings,
+            container_settings: ContainerSettings,
             user_id: str,
             agent_role,
             gm_link: str = None) -> Dict[str, str]:
@@ -147,7 +200,7 @@ class DockerManager:
         }
 
     def launch_container(
-            self,user_id: str,
+            self, user_id: str,
             gm_link: Optional[str] = None,
             agent_role: Optional[LiveAgentRoles] = None
     ) -> str:
@@ -159,60 +212,78 @@ class DockerManager:
             return "No available slots"
         if user_id in self.active_containers:
             return "You already have live call. Please finish it and then create new"
-        environment = self.create_environment(container_settings, user_id, agent_role, gm_link)
-        # os.makedirs(container_settings.browser_profile_dir, exist_ok=True)
-        # TODO SHOULD BE ADDED
-        # os.makedirs(user_logs_path_on_host, exist_ok=True)
 
-        # 3. Build the volume mapping dictionary
+        host_port = self._find_available_port()
+        if host_port is None:
+            self.logger.warning("No available ports in the specified range.")
+            return "No available ports"
+
+        environment = self.create_environment(container_settings, user_id, agent_role, gm_link)
+
+        # New logic
+        # Instead of mounting a log volume, we will now stream STDOUT/STDERR directly.
+        # Define the log file path on the host.
+        now = datetime.datetime.now(tz=datetime.UTC)
+        user_logs_path_on_host = self.settings.logs_root / f"{now.strftime('%Y-%m-%dT%H:%M:%S')}-{user_id}.log"
+        os.makedirs(os.path.dirname(user_logs_path_on_host), exist_ok=True)
+        # End new logic
+
         volumes_to_mount = {
-            # --- Mapping #1: Profiles ---
-            str(self.settings.browser_profile_volume): {  # The "Outside" Path
-                # TODO Check maybe we should use full path here.
-                "bind": str(self.settings.browser_profile_root),  # The "Inside" Path
+            str(self.settings.browser_profile_volume): {
+                "bind": str(self.settings.browser_profile_root),
                 "mode": "rw"
             },
-            # str(self.settings.wireplumber_cache_src): {
-            #     "bind": str(self.settings.wireplumber_cache_dst),
-            #     "mode": "ro"
-            # },
-            # TODO SHOULD BE ADDED
-            # # --- Mapping #2: Logs ---
-            # user_logs_path_on_host: {  # The "Outside" Path
-            #     'bind': CONTAINER_LOG_PATH,  # The "Inside" Path
-            #     'mode': 'rw'
-            # }
             str(self.settings.technical_screenshots): {
                 "bind": str(self.settings.technical_screenshots),
                 "mode": "rw"
             }
-
         }
         self.logger.info(f"Volumes for mounting: {volumes_to_mount}")
-        container = self.docker_client.containers.run(
-            self.settings.docker_image,
-            detach=True,
-            environment=environment,
-            network="meeting-bot_default",  # TODO Fix this
-            shm_size='2g',  # Recommended for browser automation
-            volumes=volumes_to_mount
+
+        ports_mapping = {'5900/tcp': host_port}
+
+        try:
+            container = self.docker_client.containers.run(
+                self.settings.docker_image,
+                detach=True,
+                environment=environment,
+                network="meeting-bot_default",
+                shm_size='2g',
+                volumes=volumes_to_mount,
+                ports=ports_mapping
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to launch container for user {user_id}: {e}")
+            self._release_port(host_port) # Release the port if container fails to start
+            return "Failed to start container"
+
+        self.logger.info(f"Launched container: {container.short_id} for user {user_id}")
+
+        # New logic
+        # Create and start a daemon thread to stream logs for the new container.
+        log_thread = threading.Thread(
+            target=self._stream_container_logs_to_file,
+            args=(container, str(user_logs_path_on_host)),
+            daemon=True
         )
-        self.logger.info(f"Launched container: {container}")
-        # api_client = docker.APIClient()
-        # container_details = api_client.inspect_container(container.id)
-        # print(container_details)
-        # sleep(20)
+        log_thread.start()
+        with self.log_threads_lock:
+            self.log_streaming_threads[user_id] = log_thread
+        # End new logic
+
         with self.containers_settings_lock:
             container_settings.is_launched = True
         with self.active_containers_lock:
             self.active_containers[user_id] = container
         return "OK"
 
-    def stop_session(self, user_id:str):
+    def stop_session(self, user_id: str):
         if user_id in self.active_containers:
             self.logger.info(f"Stopping container for user: {user_id}")
-            self.active_containers[user_id].stop()
-            # TODO Deal with logs and than enable removing
-            # self.active_containers[user_id].remove()
+            container = self.active_containers[user_id]
+            container.stop()
+            # The monitor_containers loop will eventually find the stopped container
+            # and call cleanup_container_resources, or you can call it directly
+            # for a more immediate cleanup.
+            self.cleanup_container_resources(container, user_id)
             self.logger.info(f"Stopping container for user: {user_id} Done!")
-
