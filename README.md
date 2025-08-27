@@ -119,6 +119,5 @@ Management of Google meet calls happens via a mix of AI agent, Selenium driver, 
 # Road map 
 
 * Move prompts to the config
-* Add memory - weaviate as a vector database for Agent memory storage. 
-* Add WhatsApp Support 
+* Add memory - weaviate as a vector database for Agent memory storage.
 * Test with a wide range of MCP servers. 
