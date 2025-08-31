@@ -3,6 +3,13 @@
 
 This is an Live AI-Agent that is able to connect or create google meet calls, manage them and play different roles in a call. 
 
+# Demo
+watch with sound
+
+https://github.com/user-attachments/assets/3e4354c7-05d4-4551-9b28-b15c7cec4566
+
+
+
 # Live example
 Live example is available here:
 [https://thebot.thdevelop.com/](https://thebot.thdevelop.com/)
