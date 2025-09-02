@@ -1,7 +1,7 @@
 # Meeting Agent
 ![Logo](./frontend/public/the-developer-logo-2-small.png)
 
-This is an Live AI-Agent that is able to connect or create google meet calls, manage them and play different roles in a call. 
+Google Meet live AI-Agent. This is an Live AI-Agent that is able to connect or create google meet calls, manage them and play different roles in a call. 
 
 # Demo
 watch with sound
