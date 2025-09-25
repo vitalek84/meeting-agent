@@ -1,8 +1,8 @@
-import os
 import asyncio
 import logging
 import shutil
 import sys
+
 import requests  # Add this import
 from selenium.common import SessionNotCreatedException
 
@@ -16,8 +16,8 @@ from meeting_agent.settings import settings
 async def main():
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        stream=sys.stdout
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,
     )
 
     driver = None
@@ -28,10 +28,14 @@ async def main():
     # shutil.rmtree(settings.browser_profile_path)
     try:
         driver = DriverConfigurator.make_driver(settings)
-    except SessionNotCreatedException as e:
-        logging.error("It seems browser session was closed with issue. Recreating profile!")
+    except SessionNotCreatedException:
+        logging.error(
+            "It seems browser session was closed with issue. Recreating profile!"
+        )
         shutil.rmtree(settings.browser_profile_path)
-        logging.info(f"Profile {settings.browser_profile_path} was removed! Trying to start driver again!")
+        logging.info(
+            f"Profile {settings.browser_profile_path} was removed! Trying to start driver again!"
+        )
         driver = DriverConfigurator.make_driver(settings)
     try:
         glogin_automation = GoogleLoginAutomation(settings, driver)
@@ -43,18 +47,26 @@ async def main():
             meeting_host = False
 
         controller = MeetConnectionController(
-                driver, glogin_automation, GMPageParserAIv3(settings), settings, settings.gm_link, meeting_host=meeting_host
-            )
+            driver,
+            glogin_automation,
+            GMPageParserAIv3(settings),
+            settings,
+            settings.gm_link,
+            meeting_host=meeting_host,
+        )
         await controller.run()
-
 
     except Exception as e:
         logging.error(f"An unhandled exception occurred: {e}", exc_info=True)
-        meet_progress = MeetingProgress(status=StatusEnum.error, user_id=settings.user_id,
-                                        error="Something went wrong with an agent. Please try again!")
+        meet_progress = MeetingProgress(
+            status=StatusEnum.error,
+            user_id=settings.user_id,
+            error="Something went wrong with an agent. Please try again!",
+        )
         requests.post(str(settings.callback_url), json=meet_progress.model_dump())
         if driver:
             driver.quit()
 
+
 if __name__ == "__main__":
-   asyncio.run(main())
+    asyncio.run(main())

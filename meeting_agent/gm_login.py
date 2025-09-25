@@ -1,18 +1,20 @@
 import time
-import os
-from typing import Tuple, Type, Any
+from typing import Any, Tuple, Type
 
 # Assume pydantic and selenium are installed:
 # pip install pydantic selenium
-
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+)
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+from selenium.webdriver.support.ui import WebDriverWait
 
 from meeting_agent.settings import Settings
+
 
 # Helper function to map strategy string to By enum
 def _get_by_strategy(strategy_string: str) -> Type[By]:
@@ -29,11 +31,14 @@ def _get_by_strategy(strategy_string: str) -> Type[By]:
     }
     by_strategy = strategy_map.get(strategy_string.lower())
     if by_strategy is None:
-        raise ValueError(f"Unknown locator strategy: {strategy_string}. Supported strategies: {list(strategy_map.keys())}")
+        raise ValueError(
+            f"Unknown locator strategy: {strategy_string}. Supported strategies: {list(strategy_map.keys())}"
+        )
     return by_strategy
 
 
 # --- 2. Implement the GoogleLoginAutomation Class ---
+
 
 class GoogleLoginAutomation:
     """
@@ -52,7 +57,9 @@ class GoogleLoginAutomation:
         self.settings: Settings = settings
         self.driver: WebDriver = driver  # Receive driver as argument
         self._locators: dict[str, Tuple[By, str]] = {}
-        self.driver.implicitly_wait(self.settings.implicit_wait_seconds) # set implicit wait on passed object.
+        self.driver.implicitly_wait(
+            self.settings.implicit_wait_seconds
+        )  # set implicit wait on passed object.
 
     # Context manager functionality is removed since the driver is managed externally.
     # The external code is now responsible for handling the driver's lifecycle.
@@ -61,35 +68,52 @@ class GoogleLoginAutomation:
         """Converts locator strings from settings to By tuples."""
         try:
             self._locators = {
-                "email_input": (_get_by_strategy(self.settings.email_input_strategy), self.settings.email_input_value),
-                "email_next_button": (_get_by_strategy(self.settings.email_next_button_strategy), self.settings.email_next_button_value),
-                "password_input": (_get_by_strategy(self.settings.password_input_strategy), self.settings.password_input_value),
-                "password_next_button": (_get_by_strategy(self.settings.password_next_button_strategy), self.settings.password_next_button_value),
-                "logged_in_indicator": (_get_by_strategy(self.settings.logged_in_indicator_strategy),
-                                        self.settings.logged_in_indicator_value)
+                "email_input": (
+                    _get_by_strategy(self.settings.email_input_strategy),
+                    self.settings.email_input_value,
+                ),
+                "email_next_button": (
+                    _get_by_strategy(self.settings.email_next_button_strategy),
+                    self.settings.email_next_button_value,
+                ),
+                "password_input": (
+                    _get_by_strategy(self.settings.password_input_strategy),
+                    self.settings.password_input_value,
+                ),
+                "password_next_button": (
+                    _get_by_strategy(self.settings.password_next_button_strategy),
+                    self.settings.password_next_button_value,
+                ),
+                "logged_in_indicator": (
+                    _get_by_strategy(self.settings.logged_in_indicator_strategy),
+                    self.settings.logged_in_indicator_value,
+                ),
             }
             print("Locators prepared.")
         except ValueError as e:
             print(f"Error preparing locators: {e}")
-            #self.quit() # Don't quit, driver is managed externally
+            # self.quit() # Don't quit, driver is managed externally
             raise  # Re-raise the exception
 
-    def wait_for_element(self, locator: Tuple[By, str], condition: callable = EC.visibility_of_element_located) -> Any:
+    def wait_for_element(
+        self,
+        locator: Tuple[By, str],
+        condition: callable = EC.visibility_of_element_located,
+    ) -> Any:
         """Waits for an element based on a condition and returns it."""
         try:
             print(f"Waiting for element located by {locator[0]}: {locator[1]}...")
-            element = WebDriverWait(self.driver, self.settings.explicit_wait_seconds).until(
-                condition(locator)
-            )
+            element = WebDriverWait(
+                self.driver, self.settings.explicit_wait_seconds
+            ).until(condition(locator))
             print("Element found.")
             return element
         except TimeoutException:
             print(f"Timeout waiting for element located by {locator[0]}: {locator[1]}")
             raise
         except NoSuchElementException:
-             print(f"Element not found: {locator[0]}: {locator[1]} after implicit wait")
-             raise
-
+            print(f"Element not found: {locator[0]}: {locator[1]} after implicit wait")
+            raise
 
     def login(self) -> None:
         """Performs the automated Google login sequence."""
@@ -110,7 +134,9 @@ class GoogleLoginAutomation:
             email_input.send_keys(self.settings.google_email)
 
             # 3. Click email Next button
-            next_button_email = self.wait_for_element(self._locators["email_next_button"], EC.element_to_be_clickable)
+            next_button_email = self.wait_for_element(
+                self._locators["email_next_button"], EC.element_to_be_clickable
+            )
             print("Clicking Next after email...")
             next_button_email.click()
 
@@ -121,7 +147,9 @@ class GoogleLoginAutomation:
             password_input.send_keys(self.settings.google_password)
 
             # 5. Click password Next button
-            next_button_password = self.wait_for_element(self._locators["password_next_button"], EC.element_to_be_clickable)
+            next_button_password = self.wait_for_element(
+                self._locators["password_next_button"], EC.element_to_be_clickable
+            )
             print("Clicking Next after password...")
             next_button_password.click()
 
@@ -140,23 +168,24 @@ class GoogleLoginAutomation:
             raise  # Re-raise the exception
 
         ### NEW ###
-    def is_logged_in(self) -> bool:
-            """
-            Checks if the user is already logged into Google.
 
-            Returns:
-                True if logged in, False otherwise.
-            """
-            print(f"Checking login status at {self.settings.login_check_url}...")
-            try:
-                self.driver.get(self.settings.login_check_url)
-                # Use a shorter timeout for the check, as the page should load quickly.
-                self.wait_for_element(self._locators["logged_in_indicator"])
-                print("Login status: Logged IN.")
-                return True
-            except TimeoutException:
-                print("Login status: Logged OUT.")
-                return False
+    def is_logged_in(self) -> bool:
+        """
+        Checks if the user is already logged into Google.
+
+        Returns:
+            True if logged in, False otherwise.
+        """
+        print(f"Checking login status at {self.settings.login_check_url}...")
+        try:
+            self.driver.get(self.settings.login_check_url)
+            # Use a shorter timeout for the check, as the page should load quickly.
+            self.wait_for_element(self._locators["logged_in_indicator"])
+            print("Login status: Logged IN.")
+            return True
+        except TimeoutException:
+            print("Login status: Logged OUT.")
+            return False
 
     def check_and_login(self) -> None:
         """
@@ -166,17 +195,18 @@ class GoogleLoginAutomation:
         if self.is_logged_in():
             print("Session is active. Skipping login.")
             return
-        else:
-            print("Session is not active. Proceeding with login.")
-            self.login()
+        print("Session is not active. Proceeding with login.")
+        self.login()
 
     def quit(self) -> None:
-       """
-       This method does nothing in the new implementation, as the driver is managed externally.
-       You must close driver out from `automation_driver.quit()` outside of GoogleLoginAutomation object call
-       """
-       print("Warning: GoogleLoginAutomation.quit() is no longer used. The driver is managed externally, outside of GoogleLoginAutomation object")
-       pass # Does nothing
+        """
+        This method does nothing in the new implementation, as the driver is managed externally.
+        You must close driver out from `automation_driver.quit()` outside of GoogleLoginAutomation object call
+        """
+        print(
+            "Warning: GoogleLoginAutomation.quit() is no longer used. The driver is managed externally, outside of GoogleLoginAutomation object"
+        )
+        # Does nothing
 
 
 # --- 3. Example Usage ---
@@ -204,8 +234,10 @@ if __name__ == "__main__":
             options = webdriver.ChromeOptions()
             if automation_settings.headless:
                 options.add_argument("--headless")
-                options.add_argument("--no-sandbox") # Recommended for headless
-                options.add_argument("--disable-dev-shm-usage") # Recommended for headless
+                options.add_argument("--no-sandbox")  # Recommended for headless
+                options.add_argument(
+                    "--disable-dev-shm-usage"
+                )  # Recommended for headless
             driver = webdriver.Chrome(options=options)
 
         elif browser == "firefox":
@@ -216,20 +248,20 @@ if __name__ == "__main__":
         else:
             raise ValueError(f"Unsupported browser: {browser}")
 
-
         # --- Use GoogleLoginAutomation with the external driver ---
-        automation = GoogleLoginAutomation(automation_settings, driver) # Pass the driver here
+        automation = GoogleLoginAutomation(
+            automation_settings, driver
+        )  # Pass the driver here
         automation.prepare_locators()
         automation.login()
 
         # --- Now YOU are responsible for closing the driver ---
         print("Closing the WebDriver externally...")
-        driver.quit() # YOU need to close Driver out side of GoogleLoginAutomation object.
+        driver.quit()  # YOU need to close Driver out side of GoogleLoginAutomation object.
     except Exception as e:
         print(f"An error occurred: {e}")
         if driver:
-             driver.save_screenshot("error_screenshot.png")
-             driver.quit()
+            driver.save_screenshot("error_screenshot.png")
+            driver.quit()
     finally:
         print("Script execution completed.")
-

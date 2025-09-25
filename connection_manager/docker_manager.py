@@ -1,13 +1,11 @@
 import datetime
 import logging
-import os
 import threading
-from datetime import tzinfo
+from contextlib import suppress
 from time import sleep
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import docker
-import requests
 from docker.errors import NotFound
 from docker.models.containers import Container
 
@@ -17,15 +15,30 @@ from connection_manager.settings import Settings
 
 
 class DockerManager:
+    """
+    Manages Docker containers for live agent sessions.
+
+    This class is a singleton and is responsible for launching, monitoring,
+    and cleaning up Docker containers. It handles port allocation,
+    container settings, and log streaming.
+    """
+
     _singleton_instance = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, **kwargs) -> Any:  # noqa ANN002, ANN002
+        """Ensures that only one instance of DockerManager exists."""
+
         if cls._singleton_instance is None:
             cls._singleton_instance = super(DockerManager, cls).__new__(cls)
         return cls._singleton_instance
 
-    def __init__(self, settings: Settings):
-        if hasattr(self, '_initialized'):
+    def __init__(self, settings: Settings) -> None:
+        """Initializes the DockerManager.
+
+        Args:
+            settings: The application settings object.
+        """
+        if hasattr(self, "_initialized"):
             return
         self._initialized = True
 
@@ -45,21 +58,26 @@ class DockerManager:
         self.settings = settings
         self.monitoring_active = True
         self.monitoring_thread = None
-        print(settings.google_accounts)
+        self.logger.info(f"settings.google_accounts: {settings.google_accounts}")
         for account in settings.google_accounts:
             self.containers_settings.append(
                 ContainerSettings(
                     google_email=account.email,
                     google_password=account.password,
-                    browser_profile_dir=settings.browser_profile_root / account.email.replace("@", "-").replace(".",
-                                                                                                                "-"),
-                    is_launched=False
+                    browser_profile_dir=settings.browser_profile_root
+                    / account.email.replace("@", "-").replace(".", "-"),
+                    is_launched=False,
                 )
             )
         self.start_monitoring()
 
     def _find_available_port(self) -> Optional[int]:
-        """Finds an available port within the specified range."""
+        """
+        Finds an available port within the specified range.
+
+        Returns:
+            An available port number, or None if no ports are available.
+        """
         with self.occupied_ports_lock:
             for port in self.port_range:
                 if port not in self.occupied_ports:
@@ -67,37 +85,67 @@ class DockerManager:
                     return port
         return None
 
-    def _release_port(self, port: int):
-        """Releases a port, making it available for reuse."""
+    def _release_port(self, port: int) -> None:
+        """
+        Releases a port, making it available for reuse.
+
+        Args:
+            port: The port number to release.
+        """
         with self.occupied_ports_lock:
             if port in self.occupied_ports:
                 self.occupied_ports.remove(port)
 
-    # New logic
-    def _stream_container_logs_to_file(self, container: Container, log_file_path: str):
-        """
-        Streams logs from a container and writes them to a file.
+    def _stream_container_logs_to_file(
+        self, container: Container, log_file_path: str
+    ) -> None:
+        """Streams logs from a container and writes them to a file.
+
         This method is intended to be run in a separate thread.
+
+        Args:
+            container: The Docker container object.
+            log_file_path: The path to the log file on the host.
         """
-        self.logger.info(f"Starting to stream logs for container {container.short_id} to {log_file_path}")
+        self.logger.info(
+            f"Starting to stream logs for container "
+            f"{container.short_id} to {log_file_path}"
+        )
         try:
-            with open(log_file_path, 'ab') as log_file: # Open in append binary mode
-                # The stream=True makes this a blocking call that yields new lines as they come in
-                for line in container.logs(stream=True, follow=True, stdout=True, stderr=True):
+            with open(log_file_path, "ab") as log_file:  # noqa PTH123
+                for line in container.logs(
+                    stream=True, follow=True, stdout=True, stderr=True
+                ):
                     log_file.write(line)
                     log_file.flush()
         except Exception as e:
-            self.logger.error(f"Log streaming for container {container.short_id} failed: {e}")
+            self.logger.error(
+                f"Log streaming for container {container.short_id} failed: {e}"
+            )
         finally:
             self.logger.info(f"Stopping log stream for container {container.short_id}.")
-    # End new logic
 
-    def find_container_settings_by_email(self, email: str) -> Optional[ContainerSettings]:
-        """Finds container settings by Google email."""
-        return next((cs for cs in self.containers_settings if cs.google_email == email), None)
+    def find_container_settings_by_email(
+        self, email: str
+    ) -> Optional[ContainerSettings]:
+        """Finds container settings by Google email.
 
-    def monitor_containers(self):
-        """Monitors all active docker containers and cleans up if they are not running."""
+        Args:
+            email: The Google email address.
+
+        Returns:
+            The ContainerSettings object if found, otherwise None.
+        """
+        return next(
+            (cs for cs in self.containers_settings if cs.google_email == email), None
+        )
+
+    def monitor_containers(self) -> None:
+        """Monitors all active Docker containers.
+
+        Cleans up if they are not running.
+        This method is intended to be run in a background thread.
+        """
         while self.monitoring_active:
             user_ids = list(self.active_containers.keys())
             for user_id in user_ids:
@@ -107,53 +155,61 @@ class DockerManager:
 
                 try:
                     container.reload()
-                    if container.status != 'running':
+                    if container.status != "running":
                         self.logger.warning(
-                            f"Container for user {user_id} is not running (status: {container.status}). Cleaning up.")
+                            f"Container for user {user_id} is not running "
+                            f"(status: {container.status}). Cleaning up."
+                        )
                         self.cleanup_container_resources(container, user_id)
                 except NotFound:
                     self.logger.warning(
-                        f"Container for user {user_id} not found. Cleaning up settings.")
-                    self.cleanup_container_resources(None, user_id) # Pass None for container
+                        f"Container for user {user_id} not found. Cleaning up settings."
+                    )
+                    self.cleanup_container_resources(None, user_id)
             sleep(5)
 
-    def cleanup_container_resources(self, container: Optional[Container], user_id: str):
-        """Clears internal storage, resets flags, and stops associated threads."""
+    def cleanup_container_resources(
+        self, container: Optional[Container], user_id: str
+    ) -> None:
+        """Clears internal storage, resets flags  for a container.
+
+        Args:
+            container: The Docker container object to clean up.
+            Can be None if the container is already removed.
+            user_id: The ID of the user associated with the container.
+        """
         try:
-            # New logic
-            # The log streaming thread will stop automatically when the container stops.
-            # We just need to remove our reference to it.
             with self.log_threads_lock:
                 if user_id in self.log_streaming_threads:
                     del self.log_streaming_threads[user_id]
-                    self.logger.info(f"Removed log streaming thread reference for user {user_id}.")
-            # End new logic
+                    self.logger.info(
+                        f"Removed log streaming thread reference for user {user_id}."
+                    )
 
             if container:
-                env_vars = container.attrs['Config']['Env']
-                email_var = next((var for var in env_vars if var.startswith("MEET_GOOGLE_EMAIL=")), None)
-                if email_var:
-                    email = email_var.split("=")[1]
-                    container_settings = self.find_container_settings_by_email(email)
-                    if container_settings:
-                        with self.containers_settings_lock:
-                            container_settings.is_launched = False
-                        self.logger.info(f"Reset is_launched=False for {email}")
+                env_vars = container.attrs["Config"]["Env"]
+                email_var = next(
+                    (var for var in env_vars if var.startswith("MEET_GOOGLE_EMAIL=")),
+                    None,
+                )
+                email = email_var.split("=")[1]
+                container_settings = self.find_container_settings_by_email(email)
+                if container_settings:
+                    with self.containers_settings_lock:
+                        container_settings.is_launched = False
+                    self.logger.info(f"Reset is_launched=False for {email}")
 
                 try:
                     container.reload()
-                    if container.ports:
-                        for container_port, host_ports in container.ports.items():
-                            if host_ports:
-                                for host_port in host_ports:
-                                    self._release_port(int(host_port['HostPort']))
+                    for _container_port, host_ports in container.ports.items():
+                        if host_ports:
+                            for host_port in host_ports:
+                                self._release_port(int(host_port["HostPort"]))
                 except Exception as e:
                     self.logger.error(f"Error releasing port for user {user_id}: {e}")
 
-                try:
+                with suppress(NotFound):
                     container.remove(force=True)
-                except NotFound:
-                    pass  # Already removed
 
         except Exception as e:
             self.logger.error(f"Error during cleanup for user {user_id}: {e}")
@@ -162,15 +218,17 @@ class DockerManager:
                 with self.active_containers_lock:
                     del self.active_containers[user_id]
 
-    def start_monitoring(self):
+    def start_monitoring(self) -> None:
         """Starts the background monitoring thread."""
         if self.monitoring_thread is None or not self.monitoring_thread.is_alive():
             self.monitoring_active = True
-            self.monitoring_thread = threading.Thread(target=self.monitor_containers, daemon=True)
+            self.monitoring_thread = threading.Thread(
+                target=self.monitor_containers, daemon=True
+            )
             self.monitoring_thread.start()
             self.logger.info("Docker container monitoring started.")
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         """Stops the background monitoring thread."""
         self.monitoring_active = False
         if self.monitoring_thread and self.monitoring_thread.is_alive():
@@ -178,15 +236,39 @@ class DockerManager:
         self.logger.info("Docker container monitoring stopped.")
 
     def find_unlaunched_container_settings(self) -> Optional[ContainerSettings]:
-        return next((container for container in self.containers_settings if not container.is_launched), None)
+        """Finds the settings for a container that is not currently launched.
+
+        Returns:
+            The ContainerSettings object for an unlaunched container,
+            or None if all are launched.
+        """
+        return next(
+            (
+                container
+                for container in self.containers_settings
+                if not container.is_launched
+            ),
+            None,
+        )
 
     def create_environment(
-            self,
-            container_settings: ContainerSettings,
-            user_id: str,
-            agent_role,
-            gm_link: str = None) -> Dict[str, str]:
+        self,
+        container_settings: ContainerSettings,
+        user_id: str,
+        agent_role: LiveAgentRoles,
+        gm_link: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Creates the environment variables for a new Docker container.
 
+        Args:
+            container_settings: The settings for the container.
+            user_id: The ID of the user.
+            agent_role: The role of the agent.
+            gm_link: The Google Meet link, if applicable.
+
+        Returns:
+            A dictionary of environment variables.
+        """
         return {
             "MEET_USER_ID": user_id,
             "GEMINI_API_KEY": self.settings.gemini_api_key,
@@ -196,14 +278,25 @@ class DockerManager:
             "MEET_BROWSER_PROFILE_PATH": container_settings.browser_profile_dir,
             "MEET_AGENT_ROLE": agent_role.value,
             "MEET_TECHNICAL_SCREENSHOTS": self.settings.technical_screenshots,
-            "MEET_MANAGER_HOST_NAME": self.settings.manager_host_name
+            "MEET_MANAGER_HOST_NAME": self.settings.manager_host_name,
         }
 
     def launch_container(
-            self, user_id: str,
-            gm_link: Optional[str] = None,
-            agent_role: Optional[LiveAgentRoles] = None
+        self,
+        user_id: str,
+        gm_link: Optional[str] = None,
+        agent_role: Optional[LiveAgentRoles] = None,
     ) -> str:
+        """Launches a new Docker container for a user.
+
+        Args:
+            user_id: The ID of the user for whom to launch the container.
+            gm_link: The Google Meet link, if applicable.
+            agent_role: The role of the agent. Defaults to software_development_manager.
+
+        Returns:
+            "OK" if the container was launched successfully, or an error message.
+        """
         if agent_role is None:
             agent_role = LiveAgentRoles.software_development_manager
         container_settings = self.find_unlaunched_container_settings()
@@ -218,29 +311,30 @@ class DockerManager:
             self.logger.warning("No available ports in the specified range.")
             return "No available ports"
 
-        environment = self.create_environment(container_settings, user_id, agent_role, gm_link)
+        environment = self.create_environment(
+            container_settings, user_id, agent_role, gm_link
+        )
 
-        # New logic
-        # Instead of mounting a log volume, we will now stream STDOUT/STDERR directly.
-        # Define the log file path on the host.
         now = datetime.datetime.now(tz=datetime.UTC)
-        user_logs_path_on_host = self.settings.logs_root / f"{now.strftime('%Y-%m-%dT%H:%M:%S')}-{user_id}.log"
-        os.makedirs(os.path.dirname(user_logs_path_on_host), exist_ok=True)
-        # End new logic
+        user_logs_path_on_host = (
+            self.settings.logs_root
+            / f"{now.strftime('%Y-%m-%dT%H:%M:%S')}-{user_id}.log"
+        )
+        user_logs_path_on_host.parent.mkdir(parents=True, exist_ok=True)
 
         volumes_to_mount = {
             str(self.settings.browser_profile_volume): {
                 "bind": str(self.settings.browser_profile_root),
-                "mode": "rw"
+                "mode": "rw",
             },
             str(self.settings.technical_screenshots): {
                 "bind": str(self.settings.technical_screenshots),
-                "mode": "rw"
-            }
+                "mode": "rw",
+            },
         }
         self.logger.info(f"Volumes for mounting: {volumes_to_mount}")
 
-        ports_mapping = {'5900/tcp': host_port}
+        ports_mapping = {"5900/tcp": host_port}
 
         try:
             container = self.docker_client.containers.run(
@@ -248,13 +342,14 @@ class DockerManager:
                 detach=True,
                 environment=environment,
                 network="meeting-bot_default",
-                shm_size='2g',
+                shm_size="2g",
                 volumes=volumes_to_mount,
-                ports=ports_mapping
+                ports=ports_mapping,
             )
         except Exception as e:
             self.logger.error(f"Failed to launch container for user {user_id}: {e}")
-            self._release_port(host_port) # Release the port if container fails to start
+            # Release the port if container fails to start
+            self._release_port(host_port)
             return "Failed to start container"
 
         self.logger.info(f"Launched container: {container.short_id} for user {user_id}")
@@ -264,7 +359,7 @@ class DockerManager:
         log_thread = threading.Thread(
             target=self._stream_container_logs_to_file,
             args=(container, str(user_logs_path_on_host)),
-            daemon=True
+            daemon=True,
         )
         log_thread.start()
         with self.log_threads_lock:
@@ -277,7 +372,12 @@ class DockerManager:
             self.active_containers[user_id] = container
         return "OK"
 
-    def stop_session(self, user_id: str):
+    def stop_session(self, user_id: str) -> None:
+        """Stops and cleans up the Docker container for a given user.
+
+        Args:
+            user_id: The ID of the user whose container session to stop.
+        """
         if user_id in self.active_containers:
             self.logger.info(f"Stopping container for user: {user_id}")
             container = self.active_containers[user_id]

@@ -9,13 +9,15 @@ from yarl import URL
 
 TEMP_DIR = Path(gettempdir())
 
-class LiveAgentRoles(enum.Enum):
-    software_development_manager = 'software_development_manager'
-    psychologist = 'psychologist'
-    heart_of_gold_computer = 'heart_of_gold_computer'
-    business_coach = 'business_coach'
 
-class LogLevel(str, enum.Enum):  # noqa: WPS600
+class LiveAgentRoles(enum.Enum):
+    software_development_manager = "software_development_manager"
+    psychologist = "psychologist"
+    heart_of_gold_computer = "heart_of_gold_computer"
+    business_coach = "business_coach"
+
+
+class LogLevel(str, enum.Enum):
     """Possible log levels."""
 
     NOTSET = "NOTSET"
@@ -33,6 +35,7 @@ class Settings(BaseSettings):
     These parameters can be configured
     with environment variables.
     """
+
     log_level: LogLevel = LogLevel.INFO
 
     llm_backend: str = "google-gla"
@@ -47,7 +50,10 @@ class Settings(BaseSettings):
     google_email: str = Field(..., description="Google Account Email")
     google_password: str = Field(..., description="Google Account Password")
 
-    gm_link: Optional[str] = Field(None, description="Google Meet Link if we want to connect to already created meeting")
+    gm_link: Optional[str] = Field(
+        None,
+        description="Google Meet Link if we want to connect to already created meeting",
+    )
     # --- URLs ---
     login_url: str = "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Faccounts.google.com%2F&followup=https%3A%2F%2Faccounts.google.com%2F&ifkv=AdBytiN_tWgXcYS5qjOE2GEVJi5iSG_JeR9UeD1JVqDMwFElPDfnACIGY7ohPHB-IJcgLhfEBH0aCQ&passive=1209600&flowName=GlifWebSignIn&flowEntry=ServiceLogin&dsh=S-484575432%3A1750291214318700"
 
@@ -57,9 +63,12 @@ class Settings(BaseSettings):
     headless: bool = Field(False, description="Run browser in headless mode (no GUI)")
 
     # --- Wait Times (in seconds) ---
-    implicit_wait_seconds: int = Field(10, description="Implicit wait time for elements")
-    explicit_wait_seconds: int = Field(120, description="Explicit wait time for specific conditions")
-
+    implicit_wait_seconds: int = Field(
+        10, description="Implicit wait time for elements"
+    )
+    explicit_wait_seconds: int = Field(
+        120, description="Explicit wait time for specific conditions"
+    )
 
     browser_profile_path: str = "browser_profiles/chrome"
 
@@ -76,37 +85,65 @@ class Settings(BaseSettings):
     # --- Locators (Define strategies as strings, map to By later) ---
     # Example: export EMAIL_INPUT_STRATEGY="id"
     # Example: export EMAIL_INPUT_VALUE="identifierId"
-    email_input_strategy: str = Field("id", description="Locator strategy for email input")
-    email_input_value: str = Field("identifierId", description="Locator value for email input")
+    email_input_strategy: str = Field(
+        "id", description="Locator strategy for email input"
+    )
+    email_input_value: str = Field(
+        "identifierId", description="Locator value for email input"
+    )
 
-    email_next_button_strategy: str = Field("id", description="Locator strategy for email Next button")
-    email_next_button_value: str = Field("identifierNext", description="Locator value for email Next button")
+    email_next_button_strategy: str = Field(
+        "id", description="Locator strategy for email Next button"
+    )
+    email_next_button_value: str = Field(
+        "identifierNext", description="Locator value for email Next button"
+    )
 
-    password_input_strategy: str = Field("name", description="Locator strategy for password input")
-    password_input_value: str = Field("Passwd", description="Locator value for password input")
+    password_input_strategy: str = Field(
+        "name", description="Locator strategy for password input"
+    )
+    password_input_value: str = Field(
+        "Passwd", description="Locator value for password input"
+    )
 
-    password_next_button_strategy: str = Field("id", description="Locator strategy for password Next button")
-    password_next_button_value: str = Field("passwordNext", description="Locator value for password Next button")
+    password_next_button_strategy: str = Field(
+        "id", description="Locator strategy for password Next button"
+    )
+    password_next_button_value: str = Field(
+        "passwordNext", description="Locator value for password Next button"
+    )
 
     # Meeting config
-    max_alone_in_the_call_time:int = Field(120, description="Time that agaent may stay in the call alone and wait new participants")
+    max_alone_in_the_call_time: int = Field(
+        120,
+        description="Time that agaent may stay in the call alone and wait new participants",
+    )
 
-    manager_host_name: str = Field(default="connection-manager",
-                                   description="Port for meeting creation progress callback")
-    manager_port: int = Field(default=8000,
-                              description="Port for meeting creation progress callback")
-    manager_path: str = Field(default="/internal/meeting_progress",
-                              description="Path for meeting creation progress callback")
+    manager_host_name: str = Field(
+        default="connection-manager",
+        description="Port for meeting creation progress callback",
+    )
+    manager_port: int = Field(
+        default=8000, description="Port for meeting creation progress callback"
+    )
+    manager_path: str = Field(
+        default="/internal/meeting_progress",
+        description="Path for meeting creation progress callback",
+    )
 
-    user_id: Optional[str] = Field(default=None,
-                                   description="User ID from connection management system. "
-                                               "We use it for notify proper user about meeting "
-                                               "creation/connecting process")
-    technical_screenshots: Path = Field(default=Path("/tmp") / "technical_screenshots",
-                                        description="GMPageParserAI can save screenshots with debug information."
-                                                    " If we enable debug for this module. Screenshots will save to "
-                                                    "this folder. This folder should be mounted from host machine or "
-                                                    "as separate volume")
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User ID from connection management system. "
+        "We use it for notify proper user about meeting "
+        "creation/connecting process",
+    )
+    technical_screenshots: Path = Field(
+        default=Path("/tmp") / "technical_screenshots",
+        description="GMPageParserAI can save screenshots with debug information."
+        " If we enable debug for this module. Screenshots will save to "
+        "this folder. This folder should be mounted from host machine or "
+        "as separate volume",
+    )
 
     @property
     def callback_url(self) -> URL:
@@ -119,14 +156,11 @@ class Settings(BaseSettings):
             scheme="http",
             host=self.manager_host_name,
             port=self.manager_port,
-            path=self.manager_path
+            path=self.manager_path,
         )
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_prefix="MEET_",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_file=".env", env_prefix="MEET_", env_file_encoding="utf-8", extra="ignore"
     )
 
 

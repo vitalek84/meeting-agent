@@ -1,0 +1,132 @@
+[project]
+name = "meeting-bot"
+version = "0.0.1"
+
+dependencies = [
+    "numpy>=2.3.3",
+    "google-genai>=1.29.0",
+    "google-cloud-speech>=2.33.0",
+    "pillow>=11.3.0",
+    "opencv-python>=4.11.0.86",
+    "mss>=10.1.0",
+    "selenium>=4.35.0",
+    "pydantic-ai>=1.0.7",
+    "pyautogui>=0.9.54",
+    "uv>=0.8.17",
+    "fastapi>=0.116.2",
+    "uvicorn>=0.35.0",
+    "pydantic>=2.11.9",
+    "pydantic-settings>=2.10.1",
+    "docker>=7.1.0"
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.13.0",
+    "mypy>=1.18.1",
+    "pre-commit>=4.3.0",
+    "black>=25.1.0",
+    "pytest-cov>=7.0.0",
+    "anyio>=4.10.0",
+    "pytest-env>=1.1.5",
+    "httpx>=0.28.1",
+]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+src_paths = ["python_gateway",]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+allow_subclassing_any = true
+allow_untyped_calls = true
+pretty = true
+show_error_codes = true
+implicit_reexport = true
+allow_untyped_decorators = true
+warn_unused_ignores = false
+warn_return_any = false
+namespace_packages = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore:.*unclosed.*:ResourceWarning",
+]
+env = [
+    "PYTHON_GATEWAY_ENVIRONMENT=pytest",
+    "PYTHON_GATEWAY_DB_BASE=python_gateway_test",
+]
+
+[tool.ruff]
+# List of enabled rulsets.
+# See https://docs.astral.sh/ruff/rules/ for more information.
+lint.select = [
+    "E",   # Error
+    "F",   # Pyflakes
+    "W",   # Pycodestyle
+    "C90", # McCabe complexity
+    "I",   # Isort
+    "N",   # pep8-naming
+    "D",   # Pydocstyle
+    "ANN", # Pytype annotations
+    "S",   # Bandit
+    "B",   # Bugbear
+    "COM", # Commas
+    "C4",  # Comprehensions
+    "ISC", # Implicit string concat
+    "PIE", # Unnecessary code
+    "T20", # Catch prints
+    "PYI", # validate pyi files
+    "Q",   # Checks for quotes
+    "RSE", # Checks raise statements
+    "RET", # Checks return statements
+    "SLF", # Self checks
+    "SIM", # Simplificator
+    "PTH", # Pathlib checks
+    "ERA", # Checks for commented out code
+    "PL",  # PyLint checks
+    "RUF", # Specific to Ruff checks
+]
+lint.ignore = [
+    "COM812",  # trailing commas rules
+    "D105",    # Missing docstring in magic method
+    "D107",    # Missing docstring in __init__
+    "B008",    # Do not perform function calls in argument defaults
+    "D211",    # No blank lines allowed before class docstring
+    "D212",    # Multi-line docstring summary should start at the first line
+    "D401",    # First line should be in imperative mood
+    "D104",    # Missing docstring in public package
+    "D100",    # Missing docstring in public module
+    "D202",    # No blank lines allowed after function docstring
+    "ANN102",  # Missing type annotation for self in method
+    "ANN101",  # Missing type annotation for argument
+    "ANN401",  # typing.Any are disallowed in `**kwargs
+    "PLR0913", # Too many arguments for function call
+    "D106",    # Missing docstring in public nested class
+    "N999",
+]
+lint.mccabe = { max-complexity = 10 }
+exclude = [
+    ".venv/"
+]
+line-length = 88
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101", # Use of assert detected
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+ignore-decorators = ["typing.overload"]
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["int", "str", "float", "bytes"]

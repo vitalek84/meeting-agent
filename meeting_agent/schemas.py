@@ -1,7 +1,8 @@
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from enum import Enum
+
 
 class StatusEnum(str, Enum):
     container_starting = "container_starting"
@@ -25,6 +26,7 @@ class StatusEnum(str, Enum):
             StatusEnum.ready: "System is fully ready",
         }[self]
 
+
 class GoogleMeetState(Enum):
     google_login_page = "google_login_page"
     google_relogin_page = "google_relogin_page"
@@ -32,7 +34,9 @@ class GoogleMeetState(Enum):
     google_sign_in_to_chrome = "google_sign_in_to_chrome"
     google_meet_initial_page = "google_meet_initial_page"
     google_meet_meeting_connection_page = "google_meet_meeting_connection_page"
-    google_meet_meeting_connection_page_getting_ready = "google_meet_meeting_connection_page_getting_ready"
+    google_meet_meeting_connection_page_getting_ready = (
+        "google_meet_meeting_connection_page_getting_ready"
+    )
     google_meet_awaiting_approval_page = "google_meet_awaiting_approval_page"
     google_meet_meeting_page = "google_meet_meeting_page"
     # google_meet_meeting_add_participant_page = "google_meet_meeting_add_participant_page"
@@ -42,11 +46,10 @@ class GoogleMeetState(Enum):
     google_meet_unknown_page = "google_meet_unknown_page"
     google_meet_landing_page = "google_meet_landing_page"
     google_meet_cant_join_this_call = "google_meet_cant_join_this_call"
-    google_meet_allow_microphone = "google_meet_allow_microphone" # TODO LLM Always use previous state it is ok. But maybe an issue in the future.
+    google_meet_allow_microphone = "google_meet_allow_microphone"  # TODO LLM Always use previous state it is ok. But maybe an issue in the future.
 
 
 class PageControls(Enum):
-
     new_meeting_button = "new_meeting_button"
     start_an_instant_meeting = "start_an_instant_meeting"
     join_meeting = "join_meeting"
@@ -67,10 +70,13 @@ class PageControls(Enum):
 
 class ControlElem(BaseModel):
     """
-       Represents a bounding box with its 2D coordinates and associated label.
+    Represents a bounding box with its 2D coordinates and associated label.
     """
+
     label: str = Field(..., description="Name of the control element")
-    box_2d: List[int] = Field(..., description="Bounding Box: [y_min, x_min, y_max, x_max].")
+    box_2d: List[int] = Field(
+        ..., description="Bounding Box: [y_min, x_min, y_max, x_max]."
+    )
 
 
 # class ControlElem(BaseModel):
@@ -80,38 +86,55 @@ class ControlElem(BaseModel):
 #     label: str
 #     box_2d: List[int]
 
+
 class ControlElemList(BaseModel):
-    elements:List[ControlElem]
+    elements: List[ControlElem]
 
 
 class GMState(BaseModel):
+    state: GoogleMeetState
+    logged_in: bool = Field(
+        ...,
+        description="True if a user is logged into the Google web page/service, False otherwise.",
+    )
+    alone_in_the_call: Optional[bool] = Field(
+        False,
+        description="True if only one participant is visible in the call. Only applicable for 'google_meet_meeting_page'.",
+    )
 
-    state:GoogleMeetState
-    logged_in: bool = Field(..., description="True if a user is logged into the Google web page/service, False otherwise.")
-    alone_in_the_call: Optional[bool] = Field(False, description="True if only one participant is visible in the call. Only applicable for 'google_meet_meeting_page'.")
 
 class GMStateWithControlElems(GMState):
     """
     we use separate class here because Gemini can't combine state detection and BB detection in one prompt
     (it doesn't perform well)
     """
-    elements:List[ControlElem]
 
-
+    elements: List[ControlElem]
 
 
 class GMStateTest(BaseModel):
-
     name: str = Field(..., description="What the element is or does.")
-    category: str = Field(..., description="Category: (e.g., 'Browser Tab', 'Application Button', 'Notification Popup', 'System Tray Icon').")
-    bounding_box:list[int] = Field(..., description="Bounding Box: The pixel coordinates [x_min, y_min, x_max, y_max] "
-                                                    " of its bounding box.")
+    category: str = Field(
+        ...,
+        description="Category: (e.g., 'Browser Tab', 'Application Button', 'Notification Popup', 'System Tray Icon').",
+    )
+    bounding_box: list[int] = Field(
+        ...,
+        description="Bounding Box: The pixel coordinates [x_min, y_min, x_max, y_max] "
+        " of its bounding box.",
+    )
+
 
 class GMStateTestList(BaseModel):
     elements: List[GMStateTest]
 
+
 class MeetingProgress(BaseModel):
     user_id: str = Field(..., description="User id in uuid as string format")
-    gm_link: Optional[str] = Field(default=None, description="Link for connection to a meeting")
-    error: Optional[str] = Field(default=None, description="Description of an error if it occurs")
+    gm_link: Optional[str] = Field(
+        default=None, description="Link for connection to a meeting"
+    )
+    error: Optional[str] = Field(
+        default=None, description="Description of an error if it occurs"
+    )
     status: StatusEnum = Field(..., description="Status of meeting creation process")

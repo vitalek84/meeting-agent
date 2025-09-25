@@ -1,23 +1,10 @@
-
 import asyncio
-import base64
-import io
 import logging
-import os
-import re
 import sys
 import traceback
-from typing import cast, List, Callable
-
-import cv2
-import pyaudio
-import PIL.Image
-import mss
-
-import argparse
-
 from textwrap import dedent
 
+import pyaudio
 from google import genai
 from google.genai import types
 
@@ -26,18 +13,19 @@ from meeting_agent.mcp_client import GeminiMCPClient
 from meeting_agent.settings import Settings
 
 if sys.version_info < (3, 11, 0):
-    import taskgroup, exceptiongroup
+    import exceptiongroup
+    import taskgroup
 
     asyncio.TaskGroup = taskgroup.TaskGroup
     asyncio.ExceptionGroup = exceptiongroup.ExceptionGroup
 
 
-#TODO HARDCODED PARAMS SHOULD BE MOVED TO SETTINGS
-FORMAT = pyaudio.paInt16      # 16-bit resolution # 8
-CHANNELS = 1                  # Mono channel
+# TODO HARDCODED PARAMS SHOULD BE MOVED TO SETTINGS
+FORMAT = pyaudio.paInt16  # 16-bit resolution # 8
+CHANNELS = 1  # Mono channel
 SEND_SAMPLE_RATE = 24000
 RECEIVE_SAMPLE_RATE = 24000
-CHUNK_SIZE = 1024                 # Buffer size
+CHUNK_SIZE = 1024  # Buffer size
 VIRTUAL_DEVICE_INDEX = 0
 
 # MODEL = "models/gemini-2.0-flash-exp"
@@ -49,6 +37,7 @@ MODEL = "gemini-2.5-flash-preview-native-audio-dialog"
 DEFAULT_MODE = "screen"
 
 client = genai.Client(http_options={"api_version": "v1beta"})
+
 
 class AssistantLivePrompt:
     software_development_manager = dedent("""
@@ -337,12 +326,9 @@ class AssistantLivePrompt:
         
             Initial Disclaimer: In your first interaction with a user, you must briefly and clearly state your role as a coach and your key ethical boundaries ("Just so we're clear, my role is to be your strategic partner. I can't offer financial or legal advice, but I can help you think through your strategies and goals.").""")
 
-class AssistantLive:
 
-    def __init__(
-            self,
-            settings: Settings
-    ):
+class AssistantLive:
+    def __init__(self, settings: Settings):
         self.logger = logging.getLogger(__name__)
         self.settings = settings
         self.pya = pyaudio.PyAudio()
@@ -353,7 +339,7 @@ class AssistantLive:
         self.live_model_config = {
             "response_modalities": ["AUDIO"],
             # "tools": [{'google_search': {}}],
-            "tools": [{'function_declarations': []}],
+            "tools": [{"function_declarations": []}],
             "speech_config": {
                 "voice_config": {
                     "prebuilt_voice_config": {
@@ -361,7 +347,7 @@ class AssistantLive:
                     }
                 }
             },
-            "system_instruction": "" # Should be configured in run function
+            "system_instruction": "",  # Should be configured in run function
         }
         self.live_chat_history = []
 
@@ -400,19 +386,17 @@ class AssistantLive:
             "parameters": {
                 "type": "object",
                 "properties": {},
-            }
+            },
         }
         self.local_tools = [leave_call_tool]
-
 
     async def leave_call_event_setup(self):
         self.leave_call_event.set()
 
     async def get_frames(self):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     async def get_screen(self):
-
         while True:
             frame = await self.screen_shot_maker.get_screen_gemini(real_time=True)
             if frame is None:
@@ -420,7 +404,6 @@ class AssistantLive:
 
             await asyncio.sleep(1.0)
             await self.out_queue.put(frame)
-
 
     async def send_text(self, text):
         await self.session.send(input=text or ".", end_of_turn=True)
@@ -430,7 +413,6 @@ class AssistantLive:
             msg = await self.out_queue.get()
             await self.session.send(input=msg)
 
-
     async def listen_audio(self):
         self.audio_stream = await asyncio.to_thread(
             self.pya.open,
@@ -438,8 +420,8 @@ class AssistantLive:
             channels=CHANNELS,
             rate=SEND_SAMPLE_RATE,
             input=True,
-            input_device_index=self.audio_dev_idx, #mic_info["index"],
-            frames_per_buffer=CHUNK_SIZE
+            input_device_index=self.audio_dev_idx,  # mic_info["index"],
+            frames_per_buffer=CHUNK_SIZE,
         )
         if __debug__:
             kwargs = {"exception_on_overflow": False}
@@ -449,31 +431,33 @@ class AssistantLive:
             data = await asyncio.to_thread(self.audio_stream.read, CHUNK_SIZE, **kwargs)
             await self.out_queue.put({"data": data, "mime_type": "audio/pcm"})
 
-
     async def receive_audio(self):
-        "Background task to reads from the websocket and write pcm chunks to the output queue"
+        """Background task to reads from the websocket and write pcm chunks to the output queue"""
         while True:
             turn = self.session.receive()
 
             async for response in turn:
-
                 if response.tool_call:
                     self.logger.debug(response.tool_call)
                     function_call = response.tool_call.function_calls[0]
                     tool_name = function_call.name
                     tool_args = dict(function_call.args)  # Convert to a standard dict
-                    self.logger.debug(f"[Agent] Gemini requested to call the discovered tool: '{tool_name}'")
+                    self.logger.debug(
+                        f"[Agent] Gemini requested to call the discovered tool: '{tool_name}'"
+                    )
                     self.logger.debug(f"[Agent] Arguments: {tool_args}")
                     # TODO Hardcoded for now
-                    if tool_name == 'leave_call':
+                    if tool_name == "leave_call":
                         await self.leave_call_event_setup()
                         tool_result = "OK"
                     else:
-                        tool_result = await self.gemini_mcp_client.tool_call(tool_name, tool_args)
+                        tool_result = await self.gemini_mcp_client.tool_call(
+                            tool_name, tool_args
+                        )
                     self.logger.debug(f"tool results: {tool_result}")
                     function_response = types.FunctionResponse(
                         name=tool_name,
-                        response={'result': tool_result},
+                        response={"result": tool_result},
                         id=response.tool_call.function_calls[0].id,
                     )
                     await self.session.send_tool_response(
@@ -501,7 +485,7 @@ class AssistantLive:
             channels=CHANNELS,
             rate=RECEIVE_SAMPLE_RATE,
             output=True,
-            input_device_index=self.audio_dev_idx
+            input_device_index=self.audio_dev_idx,
         )
         while True:
             bytestream = await self.audio_in_queue.get()
@@ -520,26 +504,32 @@ class AssistantLive:
     async def run(self):
         try:
             self.running = True
-            system_instructions = getattr(AssistantLivePrompt, self.settings.agent_role.value)
+            system_instructions = getattr(
+                AssistantLivePrompt, self.settings.agent_role.value
+            )
             if not system_instructions:
                 system_instructions = AssistantLivePrompt.software_development_manager
 
-            self.live_model_config['system_instruction'] = system_instructions
+            self.live_model_config["system_instruction"] = system_instructions
             token_estimation_client = genai.Client()
             response = token_estimation_client.models.count_tokens(
                 model=MODEL,
-                contents=self.live_model_config['system_instruction'],
+                contents=self.live_model_config["system_instruction"],
             )
             logging.warning(f"Live Assistant system prompt size in tokens: {response}")
             tg_tasks_list = []
             self.gemini_mcp_client = GeminiMCPClient("./mcp_config.json")
             gemini_tools = await self.gemini_mcp_client.launch_all()
-            self.live_model_config["tools"][0]['function_declarations'] = self.local_tools + gemini_tools
+            self.live_model_config["tools"][0]["function_declarations"] = (
+                self.local_tools + gemini_tools
+            )
 
             # self.logger.info(f"Live model config:  {self.live_model_config}")
             # self.logger.info(f"Available tools:  {self.live_model_config['tools']}")
             async with (
-                client.aio.live.connect(model=MODEL, config=self.live_model_config) as session,
+                client.aio.live.connect(
+                    model=MODEL, config=self.live_model_config
+                ) as session,
                 asyncio.TaskGroup() as tg,
             ):
                 self.session = session
@@ -561,7 +551,6 @@ class AssistantLive:
                     tg.create_task(self.get_screen())
                 self.logger.info("Live assistant was loaded!!!!")
 
-
                 await self.stop_event.wait()
                 self.logger.warning("Got stop_event in live assistant main routine")
                 raise asyncio.CancelledError("User requested exit")
@@ -573,4 +562,3 @@ class AssistantLive:
             self.audio_stream.close()
         except Exception as ex:
             logging.error(f"Error in assistant run function: {ex}")
-

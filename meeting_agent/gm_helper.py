@@ -3,24 +3,28 @@ import base64
 import datetime
 import io
 import logging
-from time import sleep
-from typing import Optional, Tuple, Dict, Any, List
 from threading import Lock
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
-import numpy as np
-
-import pyautogui
-from PIL import Image
 import mss
+import numpy as np
+import pyautogui
 from google import genai
 from google.genai import types
 from google.genai.types import ThinkingConfig
+from PIL import Image
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.settings import ModelSettings
 
-from meeting_agent.schemas import GMState, ControlElem, ControlElemList, GMStateWithControlElems, GoogleMeetState
-from meeting_agent.settings import Settings, settings, LogLevel
+from meeting_agent.schemas import (
+    ControlElem,
+    ControlElemList,
+    GMState,
+    GMStateWithControlElems,
+    GoogleMeetState,
+)
+from meeting_agent.settings import LogLevel, Settings, settings
 
 
 def parse_json(json_output: str):
@@ -28,24 +32,29 @@ def parse_json(json_output: str):
     lines = json_output.splitlines()
     for i, line in enumerate(lines):
         if line == "```json":
-            json_output = "\n".join(lines[i + 1:])  # Remove everything before "```json"
-            json_output = json_output.split("```")[0]  # Remove everything after the closing "```"
+            json_output = "\n".join(
+                lines[i + 1 :]
+            )  # Remove everything before "```json"
+            json_output = json_output.split("```")[
+                0
+            ]  # Remove everything after the closing "```"
             break  # Exit the loop once "```json" is found
     return json_output
 
+
 class ScreenActions:
     @staticmethod
-    def click(control_elem: Optional[ControlElem|Tuple[int, int]]):
+    def click(control_elem: Optional[ControlElem | Tuple[int, int]]):
         if isinstance(control_elem, tuple):
             x = control_elem[0]
             y = control_elem[1]
         else:
             x_min = control_elem.box_2d[1]
-            y_min =  control_elem.box_2d[0]
+            y_min = control_elem.box_2d[0]
             x_max = control_elem.box_2d[3]
             y_max = control_elem.box_2d[2]
-            x = int(x_min + (x_max - x_min)/2)
-            y = int(y_min + (y_max - y_min)/2)
+            x = int(x_min + (x_max - x_min) / 2)
+            y = int(y_min + (y_max - y_min) / 2)
         # TODO add randomisation and more then one click
         pyautogui.click(x, y)
 
@@ -59,19 +68,21 @@ class ScreenActions:
             return False
 
     @staticmethod
-    def click_icon_with_shift(icon_name: str, shift_x: int=0, shift_y: int=0) -> bool:
+    def click_icon_with_shift(
+        icon_name: str, shift_x: int = 0, shift_y: int = 0
+    ) -> bool:
         try:
             icon_location = pyautogui.locateCenterOnScreen(
-                "./gm_control_elems/" + icon_name, confidence=0.65)
+                "./gm_control_elems/" + icon_name, confidence=0.65
+            )
 
             if icon_location:
                 x, y = icon_location
-                pyautogui.click(x+shift_x, y+shift_y)
+                pyautogui.click(x + shift_x, y + shift_y)
             return True
         except Exception as ex:
             print(f"Exception in ScreenActions: {ex}")
             return False
-
 
 
 class ScreenShotMaker:
@@ -88,16 +99,13 @@ class ScreenShotMaker:
         self.mime_type = "image/jpeg"
 
     def _get_screen(self) -> Tuple[Image.Image, Tuple[int, int]]:
-
-        with self.lock:
-            with mss.mss() as sct:
-                monitor = sct.monitors[0]
-                i = sct.grab(monitor)
-                image_bytes = mss.tools.to_png(i.rgb, i.size)
-                img = Image.open(io.BytesIO(image_bytes))
-                image_size = img.size
-                return img, image_size
-
+        with self.lock, mss.mss() as sct:
+            monitor = sct.monitors[0]
+            i = sct.grab(monitor)
+            image_bytes = mss.tools.to_png(i.rgb, i.size)
+            img = Image.open(io.BytesIO(image_bytes))
+            image_size = img.size
+            return img, image_size
 
     async def get_screen_pydantic(self) -> Tuple[BinaryContent, Tuple[int, int]]:
         screen, image_size = await asyncio.to_thread(self._get_screen)
@@ -108,7 +116,7 @@ class ScreenShotMaker:
         image_bytes = image_io.read()
         return BinaryContent(image_bytes, media_type=self.mime_type), image_size
 
-    async def get_screen_gemini(self, real_time:bool = False) -> Dict[str, Any]:
+    async def get_screen_gemini(self, real_time: bool = False) -> Dict[str, Any]:
         screen, image_size = await asyncio.to_thread(self._get_screen)
         image_io = io.BytesIO()
         screen.save(image_io, format="jpeg")
@@ -119,13 +127,13 @@ class ScreenShotMaker:
                 "mime_type": self.mime_type,
                 "data": base64.b64encode(image_bytes).decode(),
             }
-        else:
-            return {
-                "mime_type": self.mime_type,
-                "data": base64.b64encode(image_bytes).decode(),
-                "image": screen,
-                "image_size": image_size
-            }
+        return {
+            "mime_type": self.mime_type,
+            "data": base64.b64encode(image_bytes).decode(),
+            "image": screen,
+            "image_size": image_size,
+        }
+
 
 class ControlFinder:
     """
@@ -155,13 +163,15 @@ class ControlFinder:
         Returns:
             A list of progressively shorter label parts.
         """
-        parts = base_label.split('_')
+        parts = base_label.split("_")
         # Generate fallbacks from most specific to least, stopping at 2 parts.
         # This prevents fallbacks that are too generic (e.g., 'call').
-        fallbacks = ['_'.join(parts[:i]) for i in range(len(parts) - 1, 1, -1)]
+        fallbacks = ["_".join(parts[:i]) for i in range(len(parts) - 1, 1, -1)]
         return fallbacks
 
-    def find_element(self, base_label: str, aliases: List[str] = None) -> Tuple[Optional[ControlElem|None], float]:
+    def find_element(
+        self, base_label: str, aliases: List[str] = None
+    ) -> Tuple[Optional[ControlElem | None], float]:
         """
         Finds a control element and returns it with a confidence score.
 
@@ -195,6 +205,7 @@ class ControlFinder:
 
         # 3. If no element is found at all
         return (None, 0.0)
+
 
 class GMPagePrompts:
     find_gm_state_prompt = """
@@ -415,8 +426,6 @@ class GMPagePrompts:
 
 
 class GMPageParserAIv3:
-
-
     find_control_elements_system_prompt = """
     Objective:
     Your task is to identify specific interface elements within Google Meet screenshots and provide 
@@ -449,8 +458,7 @@ class GMPageParserAIv3:
         self.logger = logging.getLogger(__name__)
         self.settings = settings
         self.thinkingDisabledConfig = ThinkingConfig(
-            include_thoughts=False,
-            thinking_budget=0
+            include_thoughts=False, thinking_budget=0
         )
 
         self.gm_state_client = genai.Client()
@@ -458,7 +466,9 @@ class GMPageParserAIv3:
         self.screen_shot_maker = ScreenShotMaker()
 
     async def run(
-            self, image: Optional[Image.Image | None] = None) -> GMStateWithControlElems:
+        self, image: Optional[Image.Image | None] = None
+    ) -> GMStateWithControlElems:
+        # TODO Add try except logic maybe via proxy function!
         """
 
         :param image: screenshot of the current screen
@@ -475,17 +485,18 @@ class GMPageParserAIv3:
             image.thumbnail([1024, 1024], Image.Resampling.LANCZOS)
             image_size = image.size
         gm_state = await self.gm_state_client.aio.models.generate_content(
-                model=settings.llm_model,
-                contents=[
-                    image,],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=GMState,
-                    system_instruction=GMPagePrompts.find_gm_state_prompt,
-                    temperature=0.5,
-                    thinking_config=self.thinkingDisabledConfig
-                )
-            )
+            model=settings.llm_model,
+            contents=[
+                image,
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GMState,
+                system_instruction=GMPagePrompts.find_gm_state_prompt,
+                temperature=0.5,
+                thinking_config=self.thinkingDisabledConfig,
+            ),
+        )
         # TODO May be not needed in our case
         safety_settings = [
             types.SafetySetting(
@@ -523,40 +534,43 @@ class GMPageParserAIv3:
             """
             bb_prompt = getattr(GMPagePrompts, gm_state.parsed.state.value)
             temperature = 0.7
-            prompt = "Please detect all call control element in the google meet screenshot"
+            prompt = (
+                "Please detect all call control element in the google meet screenshot"
+            )
             gm_bbs_raw = await self.gm_bb_client.aio.models.generate_content(
                 model=settings.llm_model,
-                contents=[
-                    prompt, image],
+                contents=[prompt, image],
                 config=types.GenerateContentConfig(
                     system_instruction=bb_prompt,
                     temperature=temperature,
                     thinking_config=self.thinkingDisabledConfig,
                     safety_settings=safety_settings,
-                )
+                ),
             )
             from pydantic import TypeAdapter
+
             adapter = TypeAdapter(List[ControlElem])
             gm_bbs_pydantic = adapter.validate_json(parse_json(gm_bbs_raw.text))
         else:
             # general logic
-            bb_prompt = GMPagePrompts.interface_detection_common + getattr(GMPagePrompts, gm_state.parsed.state.value, '')
+            bb_prompt = GMPagePrompts.interface_detection_common + getattr(
+                GMPagePrompts, gm_state.parsed.state.value, ""
+            )
             temperature = 0.2
             prompt = "Please find all available control elements."
 
             gm_bbs = await self.gm_bb_client.aio.models.generate_content(
-                    model=settings.llm_model,
-                    contents=[
-                        prompt, image],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=ControlElemList,
-                        system_instruction=bb_prompt,
-                        temperature=temperature,
-                        thinking_config=self.thinkingDisabledConfig,
-                        safety_settings=safety_settings,
-                    )
-                )
+                model=settings.llm_model,
+                contents=[prompt, image],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ControlElemList,
+                    system_instruction=bb_prompt,
+                    temperature=temperature,
+                    thinking_config=self.thinkingDisabledConfig,
+                    safety_settings=safety_settings,
+                ),
+            )
             gm_bbs_pydantic = gm_bbs.parsed
             for element in gm_bbs_pydantic.elements:
                 # Sometimes we have wrong answer from a model like "Raise hand button"
@@ -566,7 +580,9 @@ class GMPageParserAIv3:
             state=gm_state.parsed.state,
             logged_in=gm_state.parsed.logged_in,
             alone_in_the_call=gm_state.parsed.alone_in_the_call,
-            elements=gm_bbs_pydantic.elements if not isinstance(gm_bbs_pydantic, list) else gm_bbs_pydantic
+            elements=gm_bbs_pydantic.elements
+            if not isinstance(gm_bbs_pydantic, list)
+            else gm_bbs_pydantic,
         )
         img_buf = np.array(image)
         cv_img = cv2.cvtColor(img_buf, cv2.COLOR_RGB2BGR)
@@ -590,20 +606,25 @@ class GMPageParserAIv3:
                 abs_y1, abs_y2 = abs_y2, abs_y1
             elem.box_2d = [abs_y1, abs_x1, abs_y2, abs_x2]
             if debug:
-                cv2.rectangle(cv_img, (abs_x1, abs_y1), (abs_x2, abs_y2), (128, 128, 128), 2)
+                cv2.rectangle(
+                    cv_img, (abs_x1, abs_y1), (abs_x2, abs_y2), (128, 128, 128), 2
+                )
         now = datetime.datetime.now()
         if debug:
-            cv2.imwrite(str(self.settings.technical_screenshots / f"gm_{now.strftime('%Y-%m-%d-%H-%M-%S')}.png"), cv_img)
+            cv2.imwrite(
+                str(
+                    self.settings.technical_screenshots
+                    / f"gm_{now.strftime('%Y-%m-%d-%H-%M-%S')}.png"
+                ),
+                cv_img,
+            )
         return output
 
 
-
 class GMPageParserAI:
-
     #     google_meet_meeting_add_participant_page - It should be a screenshot with a google meet call from the host and an incoming participant notification: On the right, a pop-up notification shows that "Someone wants to join this call." (text maybe slightly different) The person's name is maybe different, and the host has the options to Admit or View
-    """
+    """ """
 
-    """
     system_prompt = """
     
     You will receive google meeting screenshots. You will see google meet in various states. Your goals are to determine the state of the google meet call and detect interface elements. Here is list of possible state and their description:
@@ -645,8 +666,7 @@ class GMPageParserAI:
     
 """
 
-    def __init__(self, settings: Settings, use_pydantic:bool = False):
-
+    def __init__(self, settings: Settings, use_pydantic: bool = False):
         """
         For the purpose of creating code that does not depend on a specific LLM
         I wanted to use PydanticAI. But PydanticAI has an odd issue with the BinaryContent class.
@@ -666,24 +686,22 @@ class GMPageParserAI:
         self.use_pydantic = use_pydantic
 
         self.thinkingDisabledConfig = ThinkingConfig(
-            include_thoughts=False,
-            thinking_budget=0
+            include_thoughts=False, thinking_budget=0
         )
 
         self.agent = Agent(
             settings.pydantic_ai_model,
             system_prompt=self.system_prompt,
             model_settings=ModelSettings(
-                temperature=0.4,
-                gemini_thinking_config=self.thinkingDisabledConfig
-            )
+                temperature=0.4, gemini_thinking_config=self.thinkingDisabledConfig
+            ),
         )
         self.screen_shot_maker = ScreenShotMaker()
         self.client = genai.Client()
 
     async def run(
-            self, image:Optional[Image.Image|None] = None,
-            debug=True) -> GMState:
+        self, image: Optional[Image.Image | None] = None, debug=True
+    ) -> GMState:
         """
 
         :param image: screenshot of the current screen
@@ -694,7 +712,6 @@ class GMPageParserAI:
             if self.use_pydantic:
                 image, image_size = await self.screen_shot_maker.get_screen_pydantic()
             else:
-
                 screen_shot_data = await self.screen_shot_maker.get_screen_gemini()
                 image = screen_shot_data["image"]
                 image_size = screen_shot_data["image_size"]
@@ -710,32 +727,29 @@ class GMPageParserAI:
                 image = BinaryContent(image_bytes, media_type="image/jpeg")
 
         if self.use_pydantic:
-            result = await self.agent.run(
-                [image], output_type=GMState
-            )
+            result = await self.agent.run([image], output_type=GMState)
 
         else:
             print(f"We call Gemini! {image}")
             result = self.client.models.generate_content(
-                model = settings.llm_model,
-                contents = [
+                model=settings.llm_model,
+                contents=[
                     "Please detect all call control element in the google meet screenshot",
-                    image],
-                config = types.GenerateContentConfig(
+                    image,
+                ],
+                config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=GMState,
                     system_instruction=self.system_prompt,
                     temperature=0.5,
-                    thinking_config=self.thinkingDisabledConfig
-                )
+                    thinking_config=self.thinkingDisabledConfig,
+                ),
             )
 
         if self.use_pydantic:
             print(f"tokens consummed: {result.usage()}")
             output = result.output
-            img_buf = np.frombuffer(
-                image.data,
-                dtype=np.uint8)
+            img_buf = np.frombuffer(image.data, dtype=np.uint8)
             cv_img = cv2.imdecode(img_buf, cv2.IMREAD_COLOR)
         else:
             output = result.parsed
@@ -761,10 +775,15 @@ class GMPageParserAI:
                 abs_y1, abs_y2 = abs_y2, abs_y1
             elem.box_2d = [abs_y1, abs_x1, abs_y2, abs_x2]
             if debug:
-                cv2.rectangle(cv_img, (abs_x1, abs_y1), (abs_x2, abs_y2), (128,128,128), 2)
-        now =datetime.datetime.now()
+                cv2.rectangle(
+                    cv_img, (abs_x1, abs_y1), (abs_x2, abs_y2), (128, 128, 128), 2
+                )
+        now = datetime.datetime.now()
         if debug:
-            cv2.imwrite(f"./technical_screenshots/gm_{now.strftime('%Y-%m-%d-%H-%M-%S')}.png", cv_img)
+            cv2.imwrite(
+                f"./technical_screenshots/gm_{now.strftime('%Y-%m-%d-%H-%M-%S')}.png",
+                cv_img,
+            )
         # TODO maybe we should remove image_width and image_height
         # output.image_width = image_size[0]
         # output.image_height = image_size[1]

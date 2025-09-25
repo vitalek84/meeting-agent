@@ -4,18 +4,27 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+
 class LiveAgentRoles(Enum):
-    software_development_manager = 'software_development_manager'
-    psychologist = 'psychologist'
-    heart_of_gold_computer = 'heart_of_gold_computer'
-    business_coach = 'business_coach'
+    """Enum for defining the roles of live agents."""
+
+    software_development_manager = "software_development_manager"
+    psychologist = "psychologist"
+    heart_of_gold_computer = "heart_of_gold_computer"
+    business_coach = "business_coach"
+
 
 class ResponseType(Enum):
-    connection_progress = 'connection_progress'
-    assistant_response = 'assistant_response'
-    error = 'error'
+    """Enum for different types of responses sent over WebSockets."""
+
+    connection_progress = "connection_progress"
+    assistant_response = "assistant_response"
+    error = "error"
+
 
 class StatusEnum(str, Enum):
+    """Enum representing the status of the meeting creation process."""
+
     container_starting = "container_starting"
     new_meeting_starting = "new_meeting_starting"
     life_agent_loading = "life_agent_loading"
@@ -26,6 +35,7 @@ class StatusEnum(str, Enum):
     ready = "ready"
 
     def description(self) -> str:
+        """Returns a human-readable description for each status."""
         return {
             StatusEnum.container_starting: "The container is starting up",
             StatusEnum.new_meeting_starting: "A new meeting is being initialized",
@@ -38,33 +48,53 @@ class StatusEnum(str, Enum):
         }[self]
 
 
-
 class ContainerSettings(BaseModel):
+    """Settings for configuring a containerized environment."""
 
-    browser_profile_dir: Path = Field( ...,
-        description="Path to the browser profiles directory."
+    browser_profile_dir: Path = Field(
+        ..., description="Path to the browser profiles directory."
     )
-    # agent_memory_dir: Path = Field( ...,
-    #     description="Path to the browser profiles directory."
-    # )
     google_email: str = Field(..., description="Google Account Email")
     google_password: str = Field(..., description="Google Account Password")
-    is_launched: bool = Field(...,
-                              description="True if we have container that already launched with this settings")
+    is_launched: bool = Field(
+        ..., description="True if a container has already launched with these settings."
+    )
+
 
 class MeetingProgress(BaseModel):
-    user_id: str = Field(..., description="User id in uuid as string format")
-    gm_link: Optional[str] = Field(default=None, description="Link for connection to a meeting")
-    error: Optional[str] = Field(default=None, description="Description of an error if it occurs")
-    status: StatusEnum = Field(..., description="Status of meeting creation process")
+    """Represents the progress or status of a meeting creation process."""
+
+    user_id: str = Field(..., description="User ID in UUID string format.")
+    gm_link: Optional[str] = Field(
+        default=None, description="Link for connection to a meeting."
+    )
+    error: Optional[str] = Field(
+        default=None, description="Description of an error if it occurs."
+    )
+    status: StatusEnum = Field(
+        ..., description="Status of the meeting creation process."
+    )
 
 
 class WebSocketResponse(BaseModel):
-    role: str = Field(default="assistant", description="Role of the response. Always assistant for now")
-    response_type: ResponseType = Field(default=None,
-                                        description="Type of response that helps a frontend to determinate behaviour")
-    text: str = Field(..., description="Response text from assistant or from call back url")
-    gm_link: Optional[str] = Field(default=None, description="Google meet link if we should share it")
+    """Structure for responses sent over WebSockets."""
+
+    role: str = Field(
+        default="assistant",
+        description="Role of the response. Currently always 'assistant'.",
+    )
+    response_type: ResponseType = Field(
+        ..., description="Type of response to guide frontend behavior."
+    )
+    text: str = Field(
+        ..., description="Response text from the assistant or a callback URL."
+    )
+    gm_link: Optional[str] = Field(
+        default=None, description="Google Meet link, if one should be shared."
+    )
+
 
 class ConnectionManagerAgentResponse(BaseModel):
-    text: str =  Field(..., description="Answer for user question/request")
+    """Represents the response from the Connection Manager agent."""
+
+    text: str = Field(..., description="Answer for the user's question or request.")

@@ -1,9 +1,11 @@
 """
 Very experimental and raw version
 """
+
+from typing import List, Tuple
+
 import pyautogui
 from mcp.server.fastmcp import FastMCP
-from typing import List, Tuple
 
 # --- Server Setup ---
 
@@ -18,6 +20,7 @@ except Exception as e:
     # Set a default resolution if pyautogui fails
     SCREEN_WIDTH, SCREEN_HEIGHT = 1920, 1080
 
+
 # Add the screen resolution as a read-only resource to the server
 @mcp.resource("resource://screen_resolution")
 def get_screen_resolution() -> dict:
@@ -26,6 +29,7 @@ def get_screen_resolution() -> dict:
 
 
 # --- Helper Functions ---
+
 
 def _find_bounding_box_center(bounding_box: List[int]) -> Tuple[int, int]:
     """
@@ -38,6 +42,7 @@ def _find_bounding_box_center(bounding_box: List[int]) -> Tuple[int, int]:
     y_center_relative = (y_min + y_max) // 2
     return x_center_relative, y_center_relative
 
+
 def _convert_relative_to_absolute(x_relative: int, y_relative: int) -> Tuple[int, int]:
     """
     Converts relative coordinates (0-1000) to absolute screen coordinates.
@@ -48,6 +53,7 @@ def _convert_relative_to_absolute(x_relative: int, y_relative: int) -> Tuple[int
 
 
 # --- Mouse Control Tools ---
+
 
 @mcp.tool()
 def move_mouse(bounding_box: List[int]) -> str:
@@ -70,14 +76,17 @@ def move_mouse(bounding_box: List[int]) -> str:
 
         pyautogui.moveTo(x_abs, y_abs)
 
-        return (f"Mouse moved to center of bounding box {bounding_box}. "
-                f"Relative center: ({x_rel}, {y_rel}). "
-                f"Absolute coordinates: ({x_abs}, {y_abs}).")
+        return (
+            f"Mouse moved to center of bounding box {bounding_box}. "
+            f"Relative center: ({x_rel}, {y_rel}). "
+            f"Absolute coordinates: ({x_abs}, {y_abs})."
+        )
     except Exception as e:
         return f"Error moving mouse: {e}"
 
+
 @mcp.tool()
-def click_mouse(bounding_box: List[int], button: str = 'left') -> str:
+def click_mouse(bounding_box: List[int], button: str = "left") -> str:
     """
     Clicks the center of a specified bounding box. The model should provide a list of 4 integers representing the bounding box of the GUI element in the format [y_min, x_min, y_max, x_max], using relative coordinates (0-1000).
 
@@ -91,7 +100,7 @@ def click_mouse(bounding_box: List[int], button: str = 'left') -> str:
     try:
         if not isinstance(bounding_box, list) or len(bounding_box) != 4:
             return "Error: bounding_box must be a list of 4 integers [y_min, x_min, y_max, x_max]."
-        if button not in ['left', 'middle', 'right']:
+        if button not in ["left", "middle", "right"]:
             return "Error: Invalid button specified. Use 'left', 'middle', or 'right'."
 
         x_rel, y_rel = _find_bounding_box_center(bounding_box)
@@ -99,11 +108,14 @@ def click_mouse(bounding_box: List[int], button: str = 'left') -> str:
 
         pyautogui.click(x_abs, y_abs, button=button)
 
-        return (f"{button.capitalize()} click at center of bounding box {bounding_box}. "
-                f"Relative center: ({x_rel}, {y_rel}). "
-                f"Absolute coordinates: ({x_abs}, {y_abs}).")
+        return (
+            f"{button.capitalize()} click at center of bounding box {bounding_box}. "
+            f"Relative center: ({x_rel}, {y_rel}). "
+            f"Absolute coordinates: ({x_abs}, {y_abs})."
+        )
     except Exception as e:
         return f"Error clicking mouse: {e}"
+
 
 @mcp.tool()
 def click_admit():
@@ -124,4 +136,4 @@ if __name__ == "__main__":
     # Or, using the mcp CLI for more options:
     # mcp serve-stdio --module_name server:mcp
     print("Starting Mouse Control Server...")
-    mcp.run(transport='stdio')
+    mcp.run(transport="stdio")

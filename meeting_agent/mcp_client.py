@@ -1,26 +1,19 @@
+import json
+import logging
+import os
 import re
+from contextlib import AsyncExitStack
+from typing import Any, Dict, List
 
-from google.genai import types
-from pydantic_ai import RunContext, Tool as PydanticTool
-from pydantic_ai.tools import ToolDefinition
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import Tool as MCPTool
-from contextlib import AsyncExitStack
-from dotenv import load_dotenv
-from typing import Any, List, Dict
-import asyncio
-import logging
-import shutil
-import json
-import os
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-class ToolMCPToGeminiConvertor:
 
+class ToolMCPToGeminiConvertor:
     @staticmethod
     def simplify_description(description: str) -> str:
         """
@@ -28,18 +21,18 @@ class ToolMCPToGeminiConvertor:
         It takes the first non-empty line and removes extra whitespace and docstring artifacts.
         """
         # Remove standard docstring sections like Args:, Returns:, etc.
-        clean_desc = re.split(r'\n\s*(Args|Returns|Raises):', description, 1)[0]
+        clean_desc = re.split(r"\n\s*(Args|Returns|Raises):", description, 1)[0]
 
         # Take the first meaningful line from the potentially multi-line description
-        lines = [line.strip() for line in clean_desc.strip().split('\n')]
+        lines = [line.strip() for line in clean_desc.strip().split("\n")]
         first_line = next((line for line in lines if line), "")
 
         # Consolidate all whitespace into single spaces
-        return re.sub(r'\s+', ' ', first_line).strip()
+        return re.sub(r"\s+", " ", first_line).strip()
 
     @staticmethod
     def convert_mcp_objects_to_gemini_tool_config(
-            mcp_tools: List[Any]
+        mcp_tools: List[Any],
     ) -> List[Dict[str, Any]]:
         """
         Converts a list of MCP tool objects into the Gemini function calling format,
@@ -59,41 +52,45 @@ class ToolMCPToGeminiConvertor:
             input_schema_dict = tool.inputSchema
 
             gemini_properties = {}
-            source_properties = input_schema_dict.get('properties', {})
+            source_properties = input_schema_dict.get("properties", {})
 
             for param_name, param_details in source_properties.items():
                 # Create a clean description, adding default value if present
-                prop_description = param_details.get('description', '')
-                if 'default' in param_details:
+                prop_description = param_details.get("description", "")
+                if "default" in param_details:
                     prop_description += f" (Default: {param_details['default']})"
 
-                param_type = param_details.get('type') if param_details.get('type') else 'string'
+                param_type = (
+                    param_details.get("type") if param_details.get("type") else "string"
+                )
 
-                if param_type == 'array':
+                if param_type == "array":
                     # For arrays, we must define the type of items they contain.
                     # Assuming 'string' as a default if not specified in MCP schema.
                     gemini_properties[param_name] = {
-                        'type': 'array',
-                        'description': prop_description.strip(),
-                        'items': {
-                            'type': 'string'  # Assuming array of strings
-                        }
+                        "type": "array",
+                        "description": prop_description.strip(),
+                        "items": {
+                            "type": "string"  # Assuming array of strings
+                        },
                     }
                 else:
                     # Original logic for simple types like string, integer, boolean.
                     gemini_properties[param_name] = {
-                        'type': param_type,
-                        'description': prop_description.strip()
+                        "type": param_type,
+                        "description": prop_description.strip(),
                     }
 
             function_declaration = {
                 "name": tool_name,
-                "description": ToolMCPToGeminiConvertor.simplify_description(tool_description),
+                "description": ToolMCPToGeminiConvertor.simplify_description(
+                    tool_description
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": gemini_properties,
-                    "required": input_schema_dict.get('required', [])
-                }
+                    "required": input_schema_dict.get("required", []),
+                },
             }
 
             gemini_tool_config.append(function_declaration)
@@ -104,36 +101,36 @@ class ToolMCPToGeminiConvertor:
 class GeminiMCPClient:
     """Manages connections to one or more MCP servers based on mcp_config.json"""
 
-    def __init__(self, config_path:str) -> None:
+    def __init__(self, config_path: str) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.config_path = config_path
         self.servers: List[Any] = []
         self.config: dict[str, Any] = {}
         self.tools: List[Any] = []
-        self.tool_to_session_map: Dict[str: Any] = {}
+        self.tool_to_session_map: Dict[str:Any] = {}
         self.exit_stack = AsyncExitStack()
 
-    async def launch_server(self, server_name: str, server_config:Dict[str, Any]):
+    async def launch_server(self, server_name: str, server_config: Dict[str, Any]):
         """
         Launches a single MCP server and returns its session and discovered tools.
         """
         print(f"[Manager] Starting MCP server: {server_name}...")
         print(f"[Manager] Starting MCP server: {server_config['args']}...")
         server_params = StdioServerParameters(
-            command=server_config['command'],
-            args=server_config['args'],
-            env=server_config['env'] if 'env' in server_config else os.environ
+            command=server_config["command"],
+            args=server_config["args"],
+            env=server_config["env"] if "env" in server_config else os.environ,
         )
 
         # Note: The stdio_client context needs to be managed carefully.
         # For a robust solution, you might manage these connections in a class.
         # This is a simplified example.
 
-        stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
-        read, write = stdio_transport
-        session = await self.exit_stack.enter_async_context(
-            ClientSession(read, write)
+        stdio_transport = await self.exit_stack.enter_async_context(
+            stdio_client(server_params)
         )
+        read, write = stdio_transport
+        session = await self.exit_stack.enter_async_context(ClientSession(read, write))
         await session.initialize()
 
         discovered_tools = await session.list_tools()
@@ -145,7 +142,9 @@ class GeminiMCPClient:
             "server_name": server_name,
             "session": session,
             "tools": discovered_tools.tools,
-            "gemini_tools": ToolMCPToGeminiConvertor.convert_mcp_objects_to_gemini_tool_config(discovered_tools.tools)
+            "gemini_tools": ToolMCPToGeminiConvertor.convert_mcp_objects_to_gemini_tool_config(
+                discovered_tools.tools
+            ),
         }
 
     async def load_servers(self, config_path: str) -> None:
@@ -179,26 +178,25 @@ class GeminiMCPClient:
                 for name, config in self.config["mcpServers"].items()
             ]
         else:
-            logging.warning(
-                f"The key 'mcpServers' was not found in {config_path}"
-            )
+            logging.warning(f"The key 'mcpServers' was not found in {config_path}")
 
     async def launch_all(self) -> List[Any]:
-
         self.tools = []
         await self.load_servers(self.config_path)
         gemini_tools = []
         for server in self.servers:
-            session = server['session']
-            for tool in server['tools']:
+            session = server["session"]
+            for tool in server["tools"]:
                 # Important: Ensure tool names are unique across all servers!
                 # If not, you may need to add a prefix, e.g., f"{server['server_name']}_{tool.name}"
                 # and adjust the name in the gemini_tool_config as well.
                 if tool.name in self.tool_to_session_map:
-                    self.logger.warning(f"Warning: Duplicate tool name '{tool.name}' found. The last one will be used.")
+                    self.logger.warning(
+                        f"Warning: Duplicate tool name '{tool.name}' found. The last one will be used."
+                    )
 
                 self.tool_to_session_map[tool.name] = session
-            gemini_tools += server['gemini_tools']
+            gemini_tools += server["gemini_tools"]
         return gemini_tools
 
     async def tool_call(self, tool_name, tool_args) -> str:
@@ -221,13 +219,11 @@ class GeminiMCPClient:
             #     role="tool", parts=[part]
             # )
             # return call_content
-        else:
-            raise KeyError(f"Error: Tool '{tool_name}' not found in any active MCP server.")
+        raise KeyError(
+            f"Error: Tool '{tool_name}' not found in any active MCP server."
+        )
 
     async def cleanup_servers(self) -> None:
         """Clean up all servers properly."""
         self.logger.info("Stopping all servers...")
         await self.exit_stack.aclose()
-
-
-

@@ -73,7 +73,8 @@ sleep 2
 
 xauth generate :0 . trusted
 
-python3 worker_main.py
+# python3 worker_main.py
 
+google-chrome --no-sandbox
 
 
